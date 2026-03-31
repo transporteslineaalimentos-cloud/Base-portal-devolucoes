@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
-import { TK_TRANSP_TRACKING } from '../config/constants';
-import { getTracking, getTransporter, calcAging, agingCategory } from '../utils/helpers';
+import { TK_TRANSP_TRACKING, TK } from '../config/constants';
+import { getTracking } from '../utils/helpers';
 import NoteListView from './NoteListView';
-import { TK } from '../config/constants';
 
 // Aba "Em acompanhamento" — mostra somente as notas TK onde o transportador
 // está responsável pelo tracking (retorno_auto, ag_consolidacao, em_transito,

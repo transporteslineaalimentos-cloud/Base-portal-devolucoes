@@ -1,6 +1,5 @@
 import { useState } from 'react';
 
-/* ── Inline SVG icons (sem dependência externa) ── */
 const Icon = ({ d, size = 18, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
@@ -11,6 +10,7 @@ const Icon = ({ d, size = 18, className = '' }) => (
 
 const icons = {
   dashboard:     'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 3a4 4 0 100-8 4 4 0 000 8z',
+  dashboard_adv: 'M18 20V10M12 20V4M6 20v-6',
   cobranca:      'M3 11l19-9-9 19-2-8-8-2z',
   lancamento:    'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
   nfDebito:      'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zm-2 9H8m4 4H8m2-8H8',
@@ -23,28 +23,27 @@ const icons = {
   chevronRight:  'M9 18l6-6-6-6',
   chevronDown:   'm6 9 6 6 6-6',
   exit:          'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
-  bell:          'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9m-4.27 13a2 2 0 01-3.46 0',
   sun:           'M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 8a4 4 0 100 8 4 4 0 000-8z',
   moon:          'M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z',
 };
 
-/* ── NAV CONFIG ── */
 function buildNav(visibleTabs, counts = {}) {
   const all = [
-    { id: 'dashboard',       label: 'Dashboard',         icon: icons.dashboard },
-    { id: 'cobranca',        label: 'Cobranças',          icon: icons.cobranca,   count: counts.cobranca,   parent: 'cobr_group' },
-    { id: 'nfDebito',        label: 'NFs Débito',         icon: icons.nfDebito,                             parent: 'cobr_group' },
-    { id: 'lancamento',      label: 'Todas as notas',     icon: icons.lancamento, count: counts.lancamento, parent: 'devol_group' },
-    { id: 'acompanhamento',  label: 'Em acompanhamento',  icon: icons.aging,      count: counts.acompanhamento, parent: 'devol_group' },
-    { id: 'transportadores', label: 'Transportadores',    icon: icons.transportador },
-    { id: 'aging',           label: 'Aging',              icon: icons.aging },
-    { id: 'historico',       label: 'Histórico',          icon: icons.historico },
-    { id: 'auditoria',       label: 'Auditoria',          icon: icons.auditoria },
-    { id: 'usuarios',        label: 'Usuários',           icon: icons.usuarios },
+    { id: 'dashboard',       label: 'Dashboard',          icon: icons.dashboard },
+    { id: 'dashboard_adv',   label: 'Dashboard Avançado', icon: icons.dashboard_adv },
+    { id: 'cobranca',        label: 'Cobranças',           icon: icons.cobranca,      count: counts.cobranca,        parent: 'cobr_group' },
+    { id: 'nfDebito',        label: 'NFs Débito',          icon: icons.nfDebito,                                     parent: 'cobr_group' },
+    { id: 'lancamento',      label: 'Todas as notas',      icon: icons.lancamento,    count: counts.lancamento,      parent: 'devol_group' },
+    { id: 'acompanhamento',  label: 'Em acompanhamento',   icon: icons.aging,         count: counts.acompanhamento,  parent: 'devol_group' },
+    { id: 'transportadores', label: 'Transportadores',     icon: icons.transportador },
+    { id: 'aging',           label: 'Aging',               icon: icons.aging },
+    { id: 'historico',       label: 'Histórico',           icon: icons.historico },
+    { id: 'auditoria',       label: 'Auditoria',           icon: icons.auditoria },
+    { id: 'usuarios',        label: 'Usuários',            icon: icons.usuarios },
     // transportador
-    { id: 'tr_dash',         label: 'Dashboard',          icon: icons.dashboard },
-    { id: 'tr_retorno',      label: 'Devoluções',         icon: icons.lancamento, count: counts.lancamento },
-    { id: 'tr_cobranca',     label: 'Cobranças',          icon: icons.cobranca,   count: counts.cobranca },
+    { id: 'tr_dash',         label: 'Dashboard',           icon: icons.dashboard },
+    { id: 'tr_retorno',      label: 'Devoluções',          icon: icons.lancamento,    count: counts.lancamento },
+    { id: 'tr_cobranca',     label: 'Cobranças',           icon: icons.cobranca,      count: counts.cobranca },
   ];
   return all.filter(item => visibleTabs.includes(item.id));
 }
@@ -55,8 +54,6 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
   const [devolOpen, setDevolOpen] = useState(true);
 
   const navItems = buildNav(visibleTabs, counts);
-
-  // Separate groups
   const cobrGroup  = navItems.filter(i => i.parent === 'cobr_group');
   const devolGroup = navItems.filter(i => i.parent === 'devol_group');
   const mainItems  = navItems.filter(i => !i.parent);
@@ -85,7 +82,6 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      {/* Logo */}
       <div className="sidebar-logo">
         <img src="/linea-logo.png" alt="Linea" onError={e => { e.target.style.display='none'; }} />
         {!collapsed && (
@@ -96,28 +92,22 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
         )}
       </div>
 
-      {/* Navigation */}
       <nav className="sidebar-nav">
         {isTransporter ? (
           navItems.map(i => renderItem(i))
         ) : (
           <>
-            {/* Dashboard */}
-            {mainItems.filter(i => i.id === 'dashboard').map(i => renderItem(i))}
+            {/* Dashboard + Dashboard Avançado */}
+            {mainItems.filter(i => i.id === 'dashboard' || i.id === 'dashboard_adv').map(i => renderItem(i))}
 
             {/* Cobranças group */}
             {cobrGroup.length > 0 && (
               <>
                 {!collapsed && (
-                  <button
-                    onClick={() => setCobrOpen(v => !v)}
-                    className="nav-item"
-                    style={{ color: 'var(--text-2)', marginTop: 4 }}
-                  >
+                  <button onClick={() => setCobrOpen(v => !v)} className="nav-item" style={{ color: 'var(--text-2)', marginTop: 4 }}>
                     <Icon d={icons.cobranca} size={16} className="nav-icon" />
                     <span className="nav-label" style={{ flex: 1 }}>Cobranças</span>
-                    <Icon d={icons.chevronDown} size={12}
-                      style={{ transform: cobrOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
+                    <Icon d={icons.chevronDown} size={12} style={{ transform: cobrOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
                   </button>
                 )}
                 {(collapsed || cobrOpen) && cobrGroup.map(i => renderItem(i, !collapsed))}
@@ -128,35 +118,24 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
             {devolGroup.length > 0 && (
               <>
                 {!collapsed && (
-                  <button
-                    onClick={() => setDevolOpen(v => !v)}
-                    className="nav-item"
-                    style={{ color: 'var(--text-2)', marginTop: 4 }}
-                  >
+                  <button onClick={() => setDevolOpen(v => !v)} className="nav-item" style={{ color: 'var(--text-2)', marginTop: 4 }}>
                     <Icon d={icons.lancamento} size={16} className="nav-icon" />
                     <span className="nav-label" style={{ flex: 1 }}>Devoluções</span>
-                    <Icon d={icons.chevronDown} size={12}
-                      style={{ transform: devolOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
+                    <Icon d={icons.chevronDown} size={12} style={{ transform: devolOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
                   </button>
                 )}
                 {(collapsed || devolOpen) && devolGroup.map(i => renderItem(i, !collapsed))}
               </>
             )}
 
-            {/* Other items */}
-            {mainItems.filter(i => i.id !== 'dashboard').map(i => renderItem(i))}
+            {/* Demais itens (sem dashboard/dashboard_adv que já foram renderizados) */}
+            {mainItems.filter(i => i.id !== 'dashboard' && i.id !== 'dashboard_adv').map(i => renderItem(i))}
           </>
         )}
       </nav>
 
-      {/* Footer */}
       <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {/* Theme toggle */}
-        <button
-          onClick={onToggleTheme}
-          className="sidebar-toggle"
-          title={isDark ? 'Modo claro' : 'Modo escuro'}
-        >
+        <button onClick={onToggleTheme} className="sidebar-toggle" title={isDark ? 'Modo claro' : 'Modo escuro'}>
           <Icon d={isDark ? icons.sun : icons.moon} size={16} />
           {!collapsed && (
             <span style={{ fontSize: 12, color: 'var(--text-2)', marginLeft: 8 }}>
@@ -165,13 +144,8 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
           )}
         </button>
 
-        {/* User + logout */}
         {user && (
-          <button
-            onClick={onLogout}
-            className="sidebar-toggle"
-            title="Sair"
-          >
+          <button onClick={onLogout} className="sidebar-toggle" title="Sair">
             <Icon d={icons.exit} size={16} style={{ color: 'var(--red)', opacity: 0.7 }} />
             {!collapsed && (
               <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -181,12 +155,7 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
           </button>
         )}
 
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed(v => !v)}
-          className="sidebar-toggle"
-          title={collapsed ? 'Expandir' : 'Recolher'}
-        >
+        <button onClick={() => setCollapsed(v => !v)} className="sidebar-toggle" title={collapsed ? 'Expandir' : 'Recolher'}>
           <Icon d={collapsed ? icons.chevronRight : icons.chevronLeft} size={16} />
         </button>
       </div>

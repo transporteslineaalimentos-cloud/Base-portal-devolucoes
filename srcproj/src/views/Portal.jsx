@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from '../hooks/useAuth.jsx';
 import { DataProvider, useData } from '../hooks/useData.jsx';
 import Login from './Login';
 import Dashboard from './Dashboard';
+import DashboardAdvanced from './DashboardAdvanced';
 import PendCobranca from './PendCobranca';
 import PendLancamento from './PendLancamento';
 import Acompanhamento from './Acompanhamento';
@@ -35,19 +36,20 @@ import { useTheme } from '../hooks/useTheme.jsx';
 const DEFAULT_FILTERS = { search: '', area: 'TODOS', status: 'todos', transporters: [], agingCat: null };
 
 const PAGE_TITLES = {
-  dashboard:      'Dashboard',
-  cobranca:       'Gestão de Cobranças',
-  lancamento:     'Todas as Devoluções',
-  acompanhamento: 'Em Acompanhamento (Transportador)',
-  nfDebito:       'NFs Débito',
-  transportadores:'Por Transportador',
-  aging:          'Aging',
-  historico:      'Histórico',
-  auditoria:      'Auditoria',
-  usuarios:       'Usuários',
-  tr_dash:        'Dashboard',
-  tr_retorno:     'Devoluções',
-  tr_cobranca:    'Cobranças',
+  dashboard:        'Dashboard',
+  dashboard_adv:    'Dashboard Avançado',
+  cobranca:         'Gestão de Cobranças',
+  lancamento:       'Todas as Devoluções',
+  acompanhamento:   'Em Acompanhamento (Transportador)',
+  nfDebito:         'NFs Débito',
+  transportadores:  'Por Transportador',
+  aging:            'Aging',
+  historico:        'Histórico',
+  auditoria:        'Auditoria',
+  usuarios:         'Usuários',
+  tr_dash:          'Dashboard',
+  tr_retorno:       'Devoluções',
+  tr_cobranca:      'Cobranças',
 };
 
 function Portal() {
@@ -56,13 +58,16 @@ function Portal() {
   const portalData = useData();
   const {
     data, statuses, history, extras, lastUpdated, lastSource, loading,
-    loadAll, syncFromGitHub, setNoteStatus, setNoteTracking,
+    loadAll, syncFromGitHub, importExcel, setNoteStatus, setNoteTracking,
     addChatMessage, getTrEmails, setTrEmails, patchExtra
   } = portalData;
   const { noteMeta, saveMeta } = useNoteMeta();
   const { audit, logAudit } = useAudit(user);
   const { notifications, markRead, createNotification } = useNotifications(user);
   const { isDark, toggleTheme } = useTheme();
+
+  // ref para input de arquivo (import manual)
+  const fileInputRef = useRef(null);
 
   const [tab, setTab] = useState(isTransporter ? 'tr_dash' : 'dashboard');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -77,9 +82,10 @@ function Portal() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [batchStatusOpen, setBatchStatusOpen] = useState(false);
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
+  const [importLoading, setImportLoading] = useState(false);
 
   useEffect(() => {
-    loadAll(); // auto-refresh via webhook acontece dentro do loadAll
+    loadAll();
   }, []); // eslint-disable-line
 
   const applyNoteFilter = (notes) => {
@@ -99,6 +105,7 @@ function Portal() {
         return tr === transporterName && transporterCanSee('cobr', st);
       })
     : baseC;
+
   const myP = isTransporter
     ? baseP.filter(d => {
         const tr = getTransporter(d, extras) || '';
@@ -120,7 +127,9 @@ function Portal() {
   );
 
   const changeTab = (t, patch = null) => {
-    setTabFilters(prev => ({ ...prev, [tab]: { ...filters } }));
+    // Salva filtros da aba atual antes de mudar
+    const currentFilters = { ...filters };
+    setTabFilters(prev => ({ ...prev, [tab]: currentFilters }));
     const saved = tabFilters[t] || DEFAULT_FILTERS;
     setFilters(patch ? { ...saved, ...patch } : saved);
     setTab(t);
@@ -138,31 +147,36 @@ function Portal() {
   const getAutoMetaPatch = (type, value, currentMeta = {}) => {
     if (type === 'status') {
       const map = {
-        pendente: { responsavel: 'interno', proxima_acao: 'Analisar internamente a cobrança', cobrar_transportador: false },
-        validado: { responsavel: 'interno', proxima_acao: 'Enviar cobrança para posição do transportador', cobrar_transportador: true },
-        cobr_tr: { responsavel: 'transportador', proxima_acao: 'Aguardar resposta do transportador', cobrar_transportador: true },
-        tr_contestou: { responsavel: 'interno', proxima_acao: 'Analisar contestação do transportador', cobrar_transportador: true, aguardando_documento: true },
-        tr_concordou: { responsavel: 'interno', proxima_acao: 'Emitir notificação/NF débito', cobrar_transportador: true },
-        tr_nao_resp: { responsavel: 'interno', proxima_acao: 'Revisar evidência e decidir continuidade', cobrar_transportador: true },
-        emitida: { responsavel: 'controladoria', proxima_acao: 'Acompanhar cobrança enviada ao transportador', cobrar_transportador: true },
-        cobrada: { responsavel: 'controladoria', proxima_acao: 'Acompanhar pagamento da cobrança', cobrar_transportador: true },
-        paga: { responsavel: 'encerrado', proxima_acao: 'Processo encerrado com pagamento', cobrar_transportador: true },
-        cancelada: { responsavel: 'encerrado', proxima_acao: 'Cobrança cancelada', cobrar_transportador: false },
+        pendente:     { responsavel: 'interno',       proxima_acao: 'Analisar internamente a cobrança',                cobrar_transportador: false },
+        validado:     { responsavel: 'interno',       proxima_acao: 'Enviar cobrança para posição do transportador',  cobrar_transportador: true },
+        cobr_tr:      { responsavel: 'transportador', proxima_acao: 'Aguardar resposta do transportador',             cobrar_transportador: true },
+        tr_contestou: { responsavel: 'interno',       proxima_acao: 'Analisar contestação do transportador',          cobrar_transportador: true, aguardando_documento: true },
+        tr_concordou: { responsavel: 'interno',       proxima_acao: 'Emitir notificação/NF débito',                   cobrar_transportador: true },
+        tr_nao_resp:  { responsavel: 'interno',       proxima_acao: 'Revisar evidência e decidir continuidade',       cobrar_transportador: true },
+        aprovar_ret:  { responsavel: 'interno',       proxima_acao: 'Emitir NF Débito',                               cobrar_transportador: true },
+        emitida:      { responsavel: 'controladoria', proxima_acao: 'Acompanhar cobrança enviada ao transportador',   cobrar_transportador: true },
+        cobrada:      { responsavel: 'controladoria', proxima_acao: 'Acompanhar pagamento da cobrança',               cobrar_transportador: true },
+        paga:         { responsavel: 'encerrado',     proxima_acao: 'Processo encerrado com pagamento',               cobrar_transportador: true },
+        cancelada:    { responsavel: 'encerrado',     proxima_acao: 'Cobrança cancelada',                             cobrar_transportador: false },
       };
       return { ...currentMeta, ...(map[value] || {}) };
     }
     const map = {
-      aguardando: { responsavel: 'interno', proxima_acao: 'Analisar devolução internamente', retorno_autorizado: false },
-      notificado: { responsavel: 'interno', proxima_acao: 'Concluir análise e decidir retorno', retorno_autorizado: false },
-      retorno_auto: { responsavel: 'transportador', proxima_acao: 'Transportador deve informar posição do retorno', retorno_autorizado: true },
-      em_transito: { responsavel: 'transportador', proxima_acao: 'Acompanhar retorno ao CD', retorno_autorizado: true },
-      agendado: { responsavel: 'transportador', proxima_acao: 'Cumprir recebimento agendado', retorno_autorizado: true },
-      perdeu_agenda: { responsavel: 'interno', proxima_acao: 'Reagendar recebimento', retorno_autorizado: true },
-      dev_recusada: { responsavel: 'interno', proxima_acao: 'Analisar recusa do transportador', retorno_autorizado: true, aguardando_documento: true },
-      extravio: { responsavel: 'interno', proxima_acao: 'Avaliar conversão para cobrança', retorno_autorizado: true, cobrar_transportador: true },
-      entregue: { responsavel: 'interno', proxima_acao: 'Conferir comprovante e encerrar', retorno_autorizado: true },
-      ret_nao_auto: { responsavel: 'encerrado', proxima_acao: 'Caso encerrado sem retorno autorizado', retorno_autorizado: false },
-      encaminhar: { responsavel: 'interno', proxima_acao: 'Tratar na fila de cobrança', retorno_autorizado: true, cobrar_transportador: true },
+      aguardando:       { responsavel: 'interno',       proxima_acao: 'Analisar devolução internamente',                    retorno_autorizado: false },
+      notificado:       { responsavel: 'interno',       proxima_acao: 'Concluir análise e decidir retorno',                  retorno_autorizado: false },
+      retorno_auto:     { responsavel: 'transportador', proxima_acao: 'Transportador deve informar posição do retorno',      retorno_autorizado: true },
+      ag_consolidacao:  { responsavel: 'transportador', proxima_acao: 'Aguardar consolidação do transportador',              retorno_autorizado: true },
+      em_transito:      { responsavel: 'transportador', proxima_acao: 'Acompanhar retorno ao CD',                            retorno_autorizado: true },
+      recebida_filial:  { responsavel: 'transportador', proxima_acao: 'Transportador deve solicitar agendamento',            retorno_autorizado: true },
+      agend_solicitado: { responsavel: 'interno',       proxima_acao: 'Confirmar agendamento com o transportador',           retorno_autorizado: true },
+      agend_confirmado: { responsavel: 'transportador', proxima_acao: 'Aguardar entrega conforme agendamento',               retorno_autorizado: true },
+      agendado:         { responsavel: 'transportador', proxima_acao: 'Cumprir recebimento agendado',                        retorno_autorizado: true },
+      perdeu_agenda:    { responsavel: 'interno',       proxima_acao: 'Reagendar recebimento',                               retorno_autorizado: true },
+      dev_recusada:     { responsavel: 'interno',       proxima_acao: 'Analisar recusa do transportador',                    retorno_autorizado: true, aguardando_documento: true },
+      extravio:         { responsavel: 'interno',       proxima_acao: 'Avaliar conversão para cobrança',                     retorno_autorizado: true, cobrar_transportador: true },
+      entregue:         { responsavel: 'interno',       proxima_acao: 'Conferir comprovante e encerrar',                     retorno_autorizado: true },
+      ret_nao_auto:     { responsavel: 'encerrado',     proxima_acao: 'Caso encerrado sem retorno autorizado',               retorno_autorizado: false },
+      encaminhar:       { responsavel: 'interno',       proxima_acao: 'Tratar na fila de cobrança',                          retorno_autorizado: true, cobrar_transportador: true },
     };
     return { ...currentMeta, ...(map[value] || {}) };
   };
@@ -214,6 +228,24 @@ function Portal() {
     }
   };
 
+  // ── Import manual de Excel ────────────────────────────────────
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    try {
+      await importExcel(file);
+      alert('Base importada com sucesso!');
+    } catch (err) {
+      alert('Erro ao importar: ' + err.message);
+    } finally {
+      setImportLoading(false);
+      // reset input para permitir reimportar o mesmo arquivo
+      e.target.value = '';
+    }
+  };
+  // ─────────────────────────────────────────────────────────────
+
   const exportCurrentView = () => {
     if (tab === 'cobranca' || tab === 'tr_cobranca') {
       exportToExcel(toExportRows(filterNotes(myC, filters, statuses, 'cobr', extras), statuses, extras, 'cobr', noteMeta), 'cobranca');
@@ -235,10 +267,12 @@ function Portal() {
 
   const exportComplete = () => {
     exportWorkbook({
-      cobranca: toExportRows(myC, statuses, extras, 'cobr', noteMeta),
-      lancamento: toExportRows(myP, statuses, extras, 'pend', noteMeta),
-      historico: history, auditoria: audit, transportadores: trSummary,
-      nfs_debito: nfGroups.flatMap(g => g.notes.map(n => ({ nfDeb: g.nfDeb, pedido: g.pedido, nfd: n.nfd, nfo: n.nfo, cliente: n.cl, valor: n.v }))),
+      cobranca:      toExportRows(myC, statuses, extras, 'cobr', noteMeta),
+      lancamento:    toExportRows(myP, statuses, extras, 'pend', noteMeta),
+      historico:     history,
+      auditoria:     audit,
+      transportadores: trSummary,
+      nfs_debito:    nfGroups.flatMap(g => g.notes.map(n => ({ nfDeb: g.nfDeb, pedido: g.pedido, nfd: n.nfd, nfo: n.nfo, cliente: n.cl, valor: n.v }))),
     });
   };
 
@@ -251,6 +285,7 @@ function Portal() {
 
   const handleBatchEmail = (notes) => openEmailForNotes(notes);
   const handleBatchStatus = () => setBatchStatusOpen(true);
+
   const confirmBatchStatus = () => {
     if (!selected.size) return;
     const label = [...SO, ...TK].find(s => s.v === batchStatusValue)?.l || batchStatusValue;
@@ -266,7 +301,18 @@ function Portal() {
     close: () => setAcceptanceModal({ opened: false, key: '' }),
     save: async (key, aceiteData) => {
       await patchExtra('aceite:' + key, aceiteData);
-      await logAudit({ nfKey: key, action: 'Aceite formal', field: 'aceite', oldValue: '', newValue: aceiteData.email, origin: 'transportador' });
+      // FIX: usa email se aceito, refuseObs se recusado, não quebra quando email é undefined
+      const auditValue = aceiteData.accepted
+        ? (aceiteData.email || aceiteData.name || 'aceito')
+        : (aceiteData.refuseObs || 'recusado');
+      await logAudit({
+        nfKey: key,
+        action: aceiteData.accepted ? 'Aceite formal' : 'Aceite recusado',
+        field: 'aceite',
+        oldValue: '',
+        newValue: auditValue,
+        origin: 'transportador',
+      });
     },
   };
 
@@ -294,11 +340,12 @@ function Portal() {
   };
 
   const renderContent = () => {
-    if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
-    if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
-    if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
-    if (tab === 'acompanhamento') return <Acompanhamento {...commonListProps} notes={myP} />;
-    if (tab === 'nfDebito') return <NfsDebito groups={nfGroups} />;
+    if (tab === 'dashboard' && !isTransporter)      return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
+    if (tab === 'dashboard_adv' && !isTransporter)  return <DashboardAdvanced cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} />;
+    if (tab === 'cobranca')        return <PendCobranca {...commonListProps} notes={myC} />;
+    if (tab === 'lancamento')      return <PendLancamento {...commonListProps} notes={myP} />;
+    if (tab === 'acompanhamento')  return <Acompanhamento {...commonListProps} notes={myP} />;
+    if (tab === 'nfDebito')        return <NfsDebito groups={nfGroups} />;
     if (tab === 'transportadores') return (
       <Transportadores
         summary={trSummary}
@@ -317,10 +364,10 @@ function Portal() {
         }}
       />
     );
-    if (tab === 'historico') return <Historico history={history} />;
-    if (tab === 'auditoria') return <AuditLog audit={audit} />;
-    if (tab === 'usuarios') return <UsuariosAdmin />;
-    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} />;
+    if (tab === 'historico')  return <Historico history={history} />;
+    if (tab === 'auditoria')  return <AuditLog audit={audit} />;
+    if (tab === 'usuarios')   return <UsuariosAdmin />;
+    if (tab === 'tr_dash' && isTransporter)    return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} />;
     if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={myP} />;
     if (tab === 'tr_cobranca' && isTransporter) return <PendCobranca {...commonListProps} notes={myC} />;
     return null;
@@ -334,12 +381,29 @@ function Portal() {
 
   return (
     <div className="app-layout">
+      {/* Input oculto para import manual */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={handleImportFile}
+      />
+
       {/* Sidebar */}
       <Sidebar
         tab={tab}
         onChangeTab={changeTab}
-        visibleTabs={permissions.visibleTabs}
-        counts={{ cobranca: myC.length, lancamento: myP.length, acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length }}
+        visibleTabs={[
+          ...permissions.visibleTabs,
+          // adiciona dashboard_adv se não for transportador e já tem dashboard
+          ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv') ? ['dashboard_adv'] : [])
+        ]}
+        counts={{
+          cobranca:       myC.length,
+          lancamento:     myP.length,
+          acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length,
+        }}
         user={user}
         onLogout={logout}
         isDark={isDark}
@@ -356,16 +420,31 @@ function Portal() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Botão de import manual */}
+            {!isTransporter && permissions.canImport && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importLoading}
+                className="btn btn-outline btn-sm"
+                title="Importar Excel manualmente"
+              >
+                {importLoading ? '⏳' : '📂'} Importar
+              </button>
+            )}
+
+            {/* Botão sync GitHub */}
             {!isTransporter && permissions.canImport && (
               <button onClick={() => syncFromGitHub(false)} className="btn btn-outline btn-sm">
                 🔄 Atualizar
               </button>
             )}
+
             {permissions.canExport && (
               <button onClick={exportComplete} className="btn btn-gold btn-sm">
                 ⬇ Excel completo
               </button>
             )}
+
             <div style={{ position: 'relative' }}>
               <NotificationBell
                 items={notifications}
@@ -374,6 +453,7 @@ function Portal() {
                 onRead={(n) => { markRead(n); setNotifOpen(false); }}
               />
             </div>
+
             <div style={{ height: 28, width: 1, background: 'var(--border)', margin: '0 4px' }} />
             <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
               {user?.name || user?.email}
@@ -385,7 +465,7 @@ function Portal() {
         <main className="app-content">
           {!data && !loading ? (
             <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-3)', fontSize: 14 }}>
-              Sem dados carregados. Clique em "Atualizar" para buscar do GitHub.
+              Sem dados carregados. Clique em "🔄 Atualizar" para buscar do GitHub ou em "📂 Importar" para carregar um arquivo local.
             </div>
           ) : (
             renderContent()
