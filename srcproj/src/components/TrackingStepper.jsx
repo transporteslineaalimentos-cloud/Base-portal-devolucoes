@@ -1,6 +1,6 @@
 import { TK } from '../config/constants';
 
-// Ordem visual das etapas no pipeline
+// Pipeline visual TK — ordem do fluxo conforme caderno
 const PIPELINE = [
   'aguardando',
   'notificado',
@@ -10,6 +10,7 @@ const PIPELINE = [
   'entregue',
 ];
 
+// Status terminais negativos (encerramento sem entrega)
 const TERMINAL = ['ret_nao_auto', 'encaminhar', 'dev_recusada', 'dev_apos_dt', 'extravio', 'perdeu_agenda'];
 
 const CheckIcon = () => (
@@ -36,6 +37,7 @@ export default function TrackingStepper({ current }) {
         borderRadius: 8, padding: '6px 12px', fontSize: 11, color: 'var(--red)', fontWeight: 600
       }}>
         {tkObj?.i} {tkObj?.l || current}
+        {current === 'extravio' && <span style={{ marginLeft: 4, opacity: 0.75 }}>· pode gerar cobrança</span>}
       </div>
     );
   }

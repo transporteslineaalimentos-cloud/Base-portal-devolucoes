@@ -1,36 +1,92 @@
-import { SO, TK, TK_INTERNAL, TK_TRANSPORT } from '../config/constants';
+import { SO, TK, getNextStatuses } from '../config/constants';
 
+// ─────────────────────────────────────────────────────────────────
+// StatusButtons — mostra APENAS os próximos status válidos
+// para o perfil + status atual da nota (conforme fluxo do caderno)
+// ─────────────────────────────────────────────────────────────────
 export default function StatusButtons({ mode, isTransporter, onStatus, onTracking, currentValue, canTransporterAct = true }) {
   if (mode === 'cobr') {
-    if (isTransporter) {
-      if (!canTransporterAct) {
-        return <span className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border bg-gray-50 border-gray-200 text-gray-500">Aguardando ação interna</span>;
+    const options = getNextStatuses('cobr', currentValue, isTransporter);
+
+    if (options.length === 0) {
+      const curr = SO.find(s => s.v === currentValue);
+      if (curr?.final) {
+        return (
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic', padding: '6px 0' }}>
+            ● Status finalizado
+          </span>
+        );
       }
       return (
-        <>
-          <button onClick={() => onStatus('tr_concordou', 'Aprovar cobrança', false)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border-[1.5px] bg-white border-green-600 text-green-600">Aprovar</button>
-          <button onClick={() => onStatus('tr_contestou', 'Contestar cobrança', false)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border-[1.5px] bg-white border-red-600 text-red-600">Contestar</button>
-          <button onClick={() => onStatus('tr_nao_resp', 'Não responsável', false)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border-[1.5px] bg-white border-gray-500 text-gray-500">Não responsável</button>
-        </>
+        <span style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic', padding: '6px 0' }}>
+          Aguardando ação {isTransporter ? 'interna' : 'do transportador'}
+        </span>
       );
     }
-    return SO.filter(s => !['tr_concordou', 'tr_contestou', 'tr_nao_resp'].includes(s.v)).map(s => (
-      <button key={s.v} onClick={() => onStatus(s.v, s.l, s.v === 'emitida')} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border-[1.5px] bg-white hover:-translate-y-0.5 transition" style={{ borderColor: s.c, color: s.c }}>{s.l}</button>
-    ));
+
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {options.map(s => {
+          const isPositive = ['cobr_tr', 'tr_concordou', 'aprovar_ret', 'emitida'].includes(s.v);
+          const isNegative = ['cancelada', 'tr_contestou', 'tr_nao_resp'].includes(s.v);
+          const isSuggested = isPositive;
+          return (
+            <button
+              key={s.v}
+              onClick={() => onStatus(s.v, s.l, s.v === 'emitida' || !!s.requires_nfd)}
+              className={`btn btn-sm ${isSuggested ? 'btn-suggested' : 'btn-outline'}`}
+              style={{
+                borderColor: isNegative ? 'rgba(220,38,38,0.4)' : undefined,
+                color: isNegative ? '#dc2626' : undefined,
+              }}
+            >
+              {s.l}
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
-  if (isTransporter) {
-    if (!canTransporterAct) {
-      return <span className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border bg-gray-50 border-gray-200 text-gray-500">Aguardando ação interna</span>;
+  // ── Tracking TK ──────────────────────────────────────────────
+  const options = getNextStatuses('tk', currentValue, isTransporter);
+
+  if (options.length === 0) {
+    const curr = TK.find(t => t.v === currentValue);
+    if (curr?.final) {
+      return (
+        <span style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic', padding: '6px 0' }}>
+          ● Status finalizado
+        </span>
+      );
     }
-    const list = TK.filter(t => TK_TRANSPORT.includes(t.v));
-    return list.map(t => (
-      <button key={t.v} onClick={() => onTracking(t.v, t.l, !!t.hasDate)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border-[1.5px] bg-white hover:-translate-y-0.5 transition" style={{ borderColor: t.c, color: t.c }}>{t.i} {t.l}</button>
-    ));
+    return (
+      <span style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic', padding: '6px 0' }}>
+        Aguardando ação {isTransporter ? 'interna' : 'do transportador'}
+      </span>
+    );
   }
 
-  const list = TK.filter(t => TK_INTERNAL.includes(t.v));
-  return list.map(t => (
-    <button key={t.v} onClick={() => onTracking(t.v, t.l, !!t.hasDate)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border-[1.5px] bg-white hover:-translate-y-0.5 transition" style={{ borderColor: t.c, color: t.c }}>{t.i} {t.l}</button>
-  ));
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {options.map(t => {
+        const isPositive = ['retorno_auto', 'entregue', 'agendado'].includes(t.v);
+        const isNegative = ['ret_nao_auto', 'extravio', 'perdeu_agenda', 'dev_recusada'].includes(t.v);
+        const isSuggested = isPositive;
+        return (
+          <button
+            key={t.v}
+            onClick={() => onTracking(t.v, t.l, !!t.hasDate)}
+            className={`btn btn-sm ${isSuggested ? 'btn-suggested' : 'btn-outline'}`}
+            style={{
+              borderColor: isNegative ? 'rgba(220,38,38,0.4)' : undefined,
+              color: isNegative ? '#dc2626' : undefined,
+            }}
+          >
+            {t.i} {t.l}
+          </button>
+        );
+      })}
+    </div>
+  );
 }

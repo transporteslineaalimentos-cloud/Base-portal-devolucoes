@@ -9,15 +9,48 @@ export default function AuditLog({ audit = [] }) {
     const q = search.toLowerCase();
     return audit.filter(a => [a.nf_key, a.usuario, a.acao, a.campo, a.valor_novo].join(' ').toLowerCase().includes(q));
   }, [audit, search]);
+
   return (
     <div>
-      <div className="flex gap-2 mb-3">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar auditoria..." className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-xs outline-none" />
-        <button onClick={() => exportToExcel(filtered, 'auditoria')} className="px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-semibold">Excel desta aba</button>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Pesquisar auditoria..." className="input" style={{ flex: 1 }} />
+        <button onClick={() => exportToExcel(filtered, 'auditoria')} className="btn btn-outline btn-sm">⬇ Excel</button>
       </div>
-      <div className="bg-white rounded-xl border overflow-auto">
-        <table className="w-full text-[11px]"><thead><tr className="bg-gray-50"><th className="px-3 py-2 text-left">Data</th><th className="px-3 py-2 text-left">Nota</th><th className="px-3 py-2 text-left">Usuário</th><th className="px-3 py-2 text-left">Perfil</th><th className="px-3 py-2 text-left">Ação</th><th className="px-3 py-2 text-left">Campo</th><th className="px-3 py-2 text-left">De</th><th className="px-3 py-2 text-left">Para</th><th className="px-3 py-2 text-left">Origem</th></tr></thead>
-          <tbody>{filtered.map((a, i) => <tr key={i} className={i % 2 ? 'bg-gray-50/50' : ''}><td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(a.created_at)}</td><td className="px-3 py-2 font-mono">{a.nf_key}</td><td className="px-3 py-2">{a.usuario}</td><td className="px-3 py-2">{a.perfil}</td><td className="px-3 py-2">{a.acao}</td><td className="px-3 py-2">{a.campo}</td><td className="px-3 py-2">{a.valor_anterior}</td><td className="px-3 py-2">{a.valor_novo}</td><td className="px-3 py-2">{a.origem}</td></tr>)}</tbody></table>
+
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
+                {['Data', 'Nota', 'Usuário', 'Perfil', 'Ação', 'Campo', 'De', 'Para', 'Origem'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Nenhum registro</td></tr>
+              ) : filtered.map((a, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{fmtDateTime(a.created_at)}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11, fontFamily: 'monospace', color: 'var(--text-2)' }}>{a.nf_key}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--text)' }}>{a.usuario}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11 }}>
+                    <span style={{ padding: '2px 7px', borderRadius: 4, background: 'var(--surface-3)', color: 'var(--text-2)', fontSize: 10 }}>{a.perfil}</span>
+                  </td>
+                  <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--gold)', fontWeight: 500 }}>{a.acao}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-3)' }}>{a.campo}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--red)', opacity: 0.8 }}>{a.valor_anterior || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>{a.valor_novo || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 10, color: 'var(--text-3)' }}>{a.origem}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

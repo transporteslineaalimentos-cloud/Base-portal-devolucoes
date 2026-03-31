@@ -1,11 +1,5 @@
 import { useMemo } from 'react';
 
-const PRIORITY_STYLES = {
-  baixa: 'bg-green-50 text-green-700 border-green-200',
-  media: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  alta: 'bg-red-50 text-red-700 border-red-200',
-};
-
 export default function NoteMetaPanel({ noteKey, meta = {}, onSave, users = [], processInfo = null }) {
   const slaPercent = useMemo(() => {
     if (!meta.sla_inicio || !meta.sla_limite) return 0;
@@ -18,57 +12,129 @@ export default function NoteMetaPanel({ noteKey, meta = {}, onSave, users = [], 
 
   const patch = (field, value) => onSave(noteKey, { ...meta, [field]: value });
 
-  return (
-    <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4">
-      <div className="text-xs font-bold text-gray-500 uppercase mb-3">Gestão da nota</div>
+  const priorityColor = meta.prioridade === 'alta' ? 'var(--red)' : meta.prioridade === 'media' ? 'var(--yellow)' : 'var(--green)';
 
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {processInfo && (
-        <div className="grid md:grid-cols-2 gap-3 mb-4">
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-            <div className="text-[11px] font-semibold text-blue-700 mb-1">Pendência atual</div>
-            <div className="text-sm font-bold text-blue-900">{processInfo.pendingWith}</div>
-            <div className="text-[11px] text-blue-700 mt-2">Visível ao transportador: <strong>{processInfo.transporterVisible ? 'Sim' : 'Não'}</strong></div>
-            <div className="text-[11px] text-blue-700">Posição do transportador: <strong>{processInfo.transporterResponse}</strong></div>
+        <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Estado atual do processo</div>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>
+            <strong style={{ color: 'var(--gold)' }}>Pendência:</strong> {processInfo.pendingWith}
           </div>
-          <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
-            <div className="text-[11px] font-semibold text-amber-700 mb-1">Próxima ação sugerida</div>
-            <div className="text-sm font-bold text-amber-900">{processInfo.nextAction}</div>
-            <div className="text-[11px] text-amber-700 mt-2">Encerramento: {processInfo.closeRule}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>
+            <strong style={{ color: 'var(--text)' }}>Próxima ação:</strong> {processInfo.nextAction}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            Encerramento: {processInfo.closeRule}
           </div>
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Prioridade</label>
-          <select value={meta.prioridade || 'media'} onChange={e => patch('prioridade', e.target.value)} className={`w-full px-3 py-2 rounded-lg border text-sm ${PRIORITY_STYLES[meta.prioridade || 'media'] || 'border-gray-200'}`}>
-            <option value="baixa">Baixa</option>
-            <option value="media">Média</option>
-            <option value="alta">Alta</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Responsável</label>
-          <input list={`responsaveis-${noteKey}`} value={meta.responsavel || ''} onChange={e => patch('responsavel', e.target.value)} placeholder="Nome ou email" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" />
-          <datalist id={`responsaveis-${noteKey}`}>{users.map(u => <option key={u} value={u} />)}</datalist>
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Próxima ação (manual)</label>
-          <input value={meta.proxima_acao || ''} onChange={e => patch('proxima_acao', e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" />
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Motivo de bloqueio</label>
-          <input value={meta.motivo_bloqueio || ''} onChange={e => patch('motivo_bloqueio', e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" />
+      {/* Priority */}
+      <div>
+        <label className="input-label">Prioridade</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['baixa', 'media', 'alta'].map(p => (
+            <button
+              key={p}
+              onClick={() => patch('prioridade', p)}
+              className="btn btn-sm"
+              style={{
+                flex: 1, justifyContent: 'center',
+                background: meta.prioridade === p ? (p === 'alta' ? 'var(--red-dim)' : p === 'media' ? 'var(--yellow-dim)' : 'var(--green-dim)') : 'transparent',
+                borderColor: meta.prioridade === p ? (p === 'alta' ? 'rgba(248,81,73,0.4)' : p === 'media' ? 'rgba(210,153,34,0.4)' : 'rgba(63,185,80,0.4)') : 'var(--border)',
+                color: meta.prioridade === p ? (p === 'alta' ? 'var(--red)' : p === 'media' ? 'var(--yellow)' : 'var(--green)') : 'var(--text-2)',
+                fontWeight: meta.prioridade === p ? 700 : 400,
+              }}
+            >
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
-      <div className="grid md:grid-cols-3 gap-3 mt-3">
-        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={!!meta.cobrar_transportador} onChange={e => patch('cobrar_transportador', e.target.checked)} /> Cobrar transportador?</label>
-        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={!!meta.retorno_autorizado} onChange={e => patch('retorno_autorizado', e.target.checked)} /> Retorno autorizado?</label>
-        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={!!meta.aguardando_documento} onChange={e => patch('aguardando_documento', e.target.checked)} /> Aguardando documento?</label>
+
+      {/* Responsavel */}
+      <div>
+        <label className="input-label">Responsável</label>
+        <input
+          list={`resp-${noteKey}`}
+          value={meta.responsavel || ''}
+          onChange={e => patch('responsavel', e.target.value)}
+          placeholder="Nome ou email do responsável"
+          className="input"
+        />
+        <datalist id={`resp-${noteKey}`}>
+          {users.map(u => <option key={u} value={u} />)}
+        </datalist>
       </div>
-      <div className="mt-3">
-        <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1"><span>SLA</span><span>{Math.round(slaPercent)}%</span></div>
-        <div className="h-2 rounded-full bg-gray-100 overflow-hidden"><div className={`h-full ${slaPercent < 60 ? 'bg-green-500' : slaPercent < 85 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${slaPercent}%` }} /></div>
+
+      {/* Proxima acao */}
+      <div>
+        <label className="input-label">Próxima ação (manual)</label>
+        <input
+          value={meta.proxima_acao || ''}
+          onChange={e => patch('proxima_acao', e.target.value)}
+          placeholder="Descreva a próxima ação esperada"
+          className="input"
+        />
+      </div>
+
+      {/* Motivo bloqueio */}
+      <div>
+        <label className="input-label">Motivo de bloqueio</label>
+        <input
+          value={meta.motivo_bloqueio || ''}
+          onChange={e => patch('motivo_bloqueio', e.target.value)}
+          placeholder="Por que está bloqueada?"
+          className="input"
+        />
+      </div>
+
+      {/* Flags */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {[
+          { field: 'cobrar_transportador', label: 'Cobrar transportador' },
+          { field: 'retorno_autorizado', label: 'Retorno autorizado' },
+          { field: 'aguardando_documento', label: 'Aguardando documento' },
+        ].map(({ field, label }) => (
+          <label key={field} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <div
+              onClick={() => patch(field, !meta[field])}
+              style={{
+                width: 36, height: 20, borderRadius: 10,
+                background: meta[field] ? 'var(--gold)' : 'var(--border-2)',
+                position: 'relative', cursor: 'pointer', flexShrink: 0,
+                transition: 'background 200ms',
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 2, left: meta[field] ? 18 : 2,
+                width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+              }} />
+            </div>
+            <span style={{ fontSize: 13, color: meta[field] ? 'var(--text)' : 'var(--text-2)' }}>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* SLA */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 500 }}>SLA Progress</span>
+          <span style={{ fontSize: 11, color: slaPercent > 85 ? 'var(--red)' : slaPercent > 60 ? 'var(--yellow)' : 'var(--green)', fontWeight: 700 }}>
+            {Math.round(slaPercent)}%
+          </span>
+        </div>
+        <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-3)', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', borderRadius: 3,
+            background: slaPercent < 60 ? 'var(--green)' : slaPercent < 85 ? 'var(--yellow)' : 'var(--red)',
+            width: `${slaPercent}%`,
+            transition: 'width 500ms ease',
+          }} />
+        </div>
       </div>
     </div>
   );

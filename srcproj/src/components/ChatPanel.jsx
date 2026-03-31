@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { fmtDateTime } from '../utils/helpers';
 
+const SendIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  </svg>
+);
+
 export default function ChatPanel({ noteKey, chat = [], addChatMessage, userName, role }) {
   const [msg, setMsg] = useState('');
   const send = () => {
@@ -8,19 +14,43 @@ export default function ChatPanel({ noteKey, chat = [], addChatMessage, userName
     addChatMessage(noteKey, msg.trim(), userName, role);
     setMsg('');
   };
+
   return (
-    <div>
-      {chat.map((m, i) => (
-        <div key={i} className={`flex mb-1.5 ${(m.role === 'transportador') === (role === 'transportador') ? 'justify-end' : 'justify-start'}`}>
-          <div className={`max-w-[80%] px-3 py-2 rounded-xl text-[11px] ${(m.role === 'transportador') === (role === 'transportador') ? 'bg-[#1a365d] text-white' : 'bg-gray-100 text-gray-700'}`}>
-            <div className="text-[9px] font-semibold opacity-60 mb-0.5">{m.user} · {fmtDateTime(m.ts)}</div>
-            {m.msg}
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {chat.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-3)', fontSize: 12 }}>
+          Nenhuma mensagem. Inicie a conversa.
         </div>
-      ))}
-      <div className="flex gap-2 mt-2">
-        <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send(); }} placeholder="Escrever mensagem..." className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-[11px] outline-none" />
-        <button onClick={send} className="px-3 py-2 bg-[#1a365d] text-white rounded-lg text-[11px] font-semibold">Enviar</button>
+      )}
+
+      {chat.map((m, i) => {
+        const isMine = (m.role === 'transportador') === (role === 'transportador');
+        return (
+          <div key={i} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+            <div>
+              <div className="chat-meta" style={{ textAlign: isMine ? 'right' : 'left' }}>
+                {m.user} · {fmtDateTime(m.ts)}
+              </div>
+              <div className={`chat-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                {m.msg}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <input
+          value={msg}
+          onChange={e => setMsg(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+          placeholder="Escrever mensagem..."
+          className="input"
+          style={{ flex: 1, padding: '8px 12px' }}
+        />
+        <button onClick={send} className="btn btn-gold btn-sm" style={{ padding: '8px 12px' }}>
+          <SendIcon />
+        </button>
       </div>
     </div>
   );

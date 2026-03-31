@@ -1,21 +1,24 @@
+import { useState } from 'react';
 import FilterBar from '../components/FilterBar';
 import TransportChips from '../components/TransportChips';
 import BatchBar from '../components/BatchBar';
 import NoteCard from '../components/NoteCard';
-import { filterNotes, summarizeTransporters, fmt, calcAging, agingCategory } from '../utils/helpers';
-
-const AGING_LABELS = { expirado: '🔴 Aging expirado (>30d)', proximo: '🟡 Aging próximo (20-30d)', ok: '🟢 Aging no prazo (<20d)' };
+import NoteDrawer from '../components/NoteDrawer';
+import { filterNotes, summarizeTransporters, fmt } from '../utils/helpers';
 
 export default function NoteListView({
   notes = [], mode = 'cobr', filters, setFilters, statusOptions, extras, statuses,
-  expandedId, setExpandedId, selected, setSelected, detailTab, setDetailTab,
+  selected, setSelected, detailTab, setDetailTab,
   addChatMessage, user, isTransporter, history, onStatus, onTracking, onOpenEmail,
   onEditTransporter, acceptanceHandler, permissions, noteMeta, saveMeta, users,
   onBatchGenerate, onBatchEmail, onBatchStatus, exportButton
 }) {
+  const [drawerNote, setDrawerNote] = useState(null);
+
   const items = filterNotes(notes, filters, statuses, mode, extras);
   const areas = [...new Set(notes.map(d => d.ar).filter(Boolean))].sort();
   const trSummary = summarizeTransporters(notes, extras).map(t => ({ name: t.name, count: t.count }));
+
   const toggleSelected = (key) => {
     const next = new Set(selected);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -26,47 +29,97 @@ export default function NoteListView({
 
   return (
     <div>
-      <BatchBar count={selected.size} onClear={clearSelected} onGenerate={() => onBatchGenerate?.(selectedNotes)} onEmail={() => onBatchEmail?.(selectedNotes)} onStatus={onBatchStatus ? () => onBatchStatus(selectedNotes) : null} />
+      {/* Batch bar */}
+      <BatchBar
+        count={selected.size}
+        onClear={clearSelected}
+        onGenerate={() => onBatchGenerate?.(selectedNotes)}
+        onEmail={() => onBatchEmail?.(selectedNotes)}
+        onStatus={onBatchStatus ? () => onBatchStatus(selectedNotes) : null}
+      />
 
-      {/* Banner quando filtro de aging está ativo */}
+      {/* Aging filter banner */}
       {filters.agingCat && (
-        <div className="mb-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between">
-          <span className="text-xs font-semibold text-amber-800">
-            Filtro ativo: {AGING_LABELS[filters.agingCat] || filters.agingCat}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: 'var(--yellow-dim)', border: '1px solid rgba(210,153,34,0.2)', borderRadius: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--yellow)' }}>
+            Filtro aging: {filters.agingCat === 'expirado' ? '🔴 Expirados (>30d)' : filters.agingCat === 'proximo' ? '🟡 Próximos (20-30d)' : '🟢 No prazo (<20d)'}
           </span>
-          <button onClick={() => setFilters({ ...filters, agingCat: null })} className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 px-2 py-0.5 rounded bg-amber-100">
-            ✕ Limpar filtro aging
+          <button onClick={() => setFilters({ ...filters, agingCat: null })} style={{ fontSize: 11, color: 'var(--yellow)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+            ✕ Limpar
           </button>
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex-1">
-          <FilterBar filters={filters} setFilters={setFilters} areas={areas} statusOptions={statusOptions} showTransporters={false} />
-          {!isTransporter && <TransportChips transporters={trSummary} active={filters.transporters || []} onToggle={(name) => {
-            const c = filters.transporters || [];
-            setFilters({ ...filters, transporters: c.includes(name) ? c.filter(x => x !== name) : [...c, name] });
-          }} />}
+      {/* Filter row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 320 }}>
+          <FilterBar filters={filters} setFilters={setFilters} areas={areas} statusOptions={statusOptions} />
         </div>
-        {exportButton}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 2 }}>
+          {!isTransporter && (
+            <TransportChips
+              transporters={trSummary}
+              active={filters.transporters || []}
+              onToggle={(name) => {
+                const c = filters.transporters || [];
+                setFilters({ ...filters, transporters: c.includes(name) ? c.filter(x => x !== name) : [...c, name] });
+              }}
+            />
+          )}
+          {exportButton}
+        </div>
       </div>
-      <div className="text-[10px] text-gray-400 mb-2">{items.length} itens · {fmt(items.reduce((s, d) => s + d.v, 0))}</div>
-      {items.map((note, index) => (
-        <NoteCard
-          key={mode + '_' + index + '_' + note.nfo + '_' + note.nfd}
-          note={note}
-          index={index}
+
+      {/* Summary */}
+      <div className="list-summary">
+        <span><strong>{items.length}</strong> registros</span>
+        <span>·</span>
+        <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{fmt(items.reduce((s, d) => s + d.v, 0))}</span>
+        {selected.size > 0 && (
+          <>
+            <span>·</span>
+            <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{selected.size} selecionado(s)</span>
+          </>
+        )}
+      </div>
+
+      {/* Table */}
+      {items.length === 0 ? (
+        <div className="empty-state" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14 }}>
+          <div className="empty-text">Nenhum registro encontrado para os filtros aplicados.</div>
+        </div>
+      ) : (
+        <div className="data-table-wrap">
+          {items.map((note, index) => (
+            <NoteCard
+              key={mode + '_' + index + '_' + note.nfo + '_' + note.nfd}
+              note={note}
+              index={index}
+              mode={mode}
+              statuses={statuses}
+              extras={extras}
+              isTransporter={isTransporter}
+              selected={selected}
+              toggleSelected={toggleSelected}
+              showSelection={!isTransporter}
+              onOpenDrawer={setDrawerNote}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Side Drawer */}
+      {drawerNote && (
+        <NoteDrawer
+          note={drawerNote}
           mode={mode}
-          expandedId={expandedId}
-          setExpandedId={setExpandedId}
+          onClose={() => setDrawerNote(null)}
           statuses={statuses}
           extras={extras}
           history={history}
-          isTransporter={isTransporter}
-          detailTab={detailTab}
-          setDetailTab={setDetailTab}
-          addChatMessage={addChatMessage}
           user={user}
+          isTransporter={isTransporter}
+          addChatMessage={addChatMessage}
           onStatus={onStatus}
           onTracking={onTracking}
           onOpenEmail={onOpenEmail}
@@ -76,12 +129,11 @@ export default function NoteListView({
           permissions={permissions}
           noteMeta={noteMeta}
           saveMeta={saveMeta}
-          selected={selected}
-          toggleSelected={toggleSelected}
-          showSelection={!isTransporter}
           users={users}
+          detailTab={detailTab}
+          setDetailTab={setDetailTab}
         />
-      ))}
+      )}
     </div>
   );
 }
