@@ -159,6 +159,58 @@ export async function dbLoadSla() {
 }
 
 
+// ─── KPI SNAPSHOTS ──────────────────────────────────
+export async function dbLoadKpiSnapshots() {
+  return await safeQuery(
+    supabase.from('portal_kpi_snapshots').select('*').order('mes', { ascending: false }).limit(12),
+    []
+  );
+}
+
+// ─── CONFIGURAÇÕES DO PORTAL ────────────────────────
+export async function dbLoadConfig() {
+  const data = await safeQuery(supabase.from('portal_config').select('*'), []);
+  const map = {};
+  (data || []).forEach(r => { map[r.key] = r.value; });
+  return map;
+}
+export async function dbSaveConfig(key, value) {
+  await safeQuery(supabase.from('portal_config').upsert({ key, value, updated_at: new Date().toISOString() }), null);
+}
+
+// ─── SIGNALS (webhook GitHub → auto-refresh) ────────
+export async function dbGetLastGithubSignal() {
+  return await safeQuery(
+    supabase.from('portal_signals')
+      .select('created_at, payload')
+      .eq('tipo', 'github_push')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single(),
+    null
+  );
+}
+
+// ─── AUTO-NOTIFICAÇÃO AO TRANSPORTADOR ──────────────
+// Chamada quando status muda para cobr_tr
+export async function notifyTransporter({ nf_key, tr_emails, tr_name, valor, motivo, nfd, nfo, cliente }) {
+  if (!tr_emails) return;
+  try {
+    const token = localStorage.getItem('sb_token');
+    await fetch(`${SB_URL}/functions/v1/auto-notify-transporter`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SB_KEY,
+        ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+      },
+      body: JSON.stringify({ nf_key, tr_emails, tr_name, valor, motivo, nfd, nfo, cliente })
+    });
+  } catch (e) {
+    console.warn('[notifyTransporter]', e.message);
+  }
+}
+
 async function parseAdminResponse(res) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || data?.message || 'Falha na operação administrativa.');

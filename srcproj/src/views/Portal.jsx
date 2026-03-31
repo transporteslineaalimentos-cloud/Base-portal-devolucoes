@@ -77,7 +77,7 @@ function Portal() {
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
 
   useEffect(() => {
-    loadAll().then(() => { if (!isTransporter) syncFromGitHub(true); });
+    loadAll(); // auto-refresh via webhook acontece dentro do loadAll
   }, []); // eslint-disable-line
 
   const applyNoteFilter = (notes) => {
