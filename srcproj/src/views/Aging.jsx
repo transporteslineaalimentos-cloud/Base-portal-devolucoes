@@ -1,81 +1,39 @@
 import { useMemo } from 'react';
+import KPICard from '../components/KPICard';
 import { fmt, calcAging, getTransporter } from '../utils/helpers';
 import { exportToExcel } from '../utils/excel';
 
 export default function Aging({ pendNotes = [], extras = {}, onOpenFiltered }) {
   const active = pendNotes.map(d => ({ ...d, aging: calcAging(d) || 0 }));
-  const exp   = active.filter(d => d.aging > 30);
-  const near  = active.filter(d => d.aging >= 20 && d.aging <= 30);
-  const ok    = active.filter(d => d.aging < 20);
-
+  const exp = active.filter(d => d.aging > 30), near = active.filter(d => d.aging >= 20 && d.aging <= 30), ok = active.filter(d => d.aging < 20);
   const offenders = useMemo(() => {
     const map = {};
-    exp.forEach(n => {
-      const tr = getTransporter(n, extras) || 'Não identificado';
-      if (!map[tr]) map[tr] = { name: tr, count: 0, value: 0 };
-      map[tr].count++;
-      map[tr].value += n.v || 0;
-    });
-    return Object.values(map).sort((a, b) => b.value - a.value).slice(0, 8);
+    active.forEach(n => { const tr = getTransporter(n, extras) || 'Não identificado'; if (!map[tr]) map[tr] = { name: tr, count: 0, value: 0 }; map[tr].count += 1; map[tr].value += n.v || 0; });
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 10);
   }, [pendNotes, extras]);
-
-  const total = active.length || 1;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button onClick={() => exportToExcel(active, 'aging')} className="btn btn-outline btn-sm">⬇ Excel</button>
+      <div className="flex justify-end mb-3"><button onClick={() => exportToExcel(active, 'aging')} className="px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-semibold">Excel desta aba</button></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        <KPICard label="🔴 Expiradas (>30d)" value={exp.length} sub={fmt(exp.reduce((s, d) => s + d.v, 0))} color="#dc2626" onClick={() => onOpenFiltered('expirado')} />
+        <KPICard label="🟡 Próximo (20-30d)" value={near.length} sub={fmt(near.reduce((s, d) => s + d.v, 0))} color="#d97706" onClick={() => onOpenFiltered('proximo')} />
+        <KPICard label="🟢 No Prazo (<20d)" value={ok.length} sub={fmt(ok.reduce((s, d) => s + d.v, 0))} color="#059669" onClick={() => onOpenFiltered('ok')} />
       </div>
-
-      {/* Hero cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
-        {[
-          { label: 'Expiradas (>30d)', list: exp, color: 'var(--red)', bg: 'var(--red-dim)', border: 'rgba(248,81,73,0.25)', cat: 'expirado' },
-          { label: 'Próximo prazo (20-30d)', list: near, color: 'var(--yellow)', bg: 'var(--yellow-dim)', border: 'rgba(210,153,34,0.25)', cat: 'proximo' },
-          { label: 'No prazo (<20d)', list: ok, color: 'var(--green)', bg: 'var(--green-dim)', border: 'rgba(63,185,80,0.25)', cat: 'ok' },
-        ].map(({ label, list, color, bg, border, cat }) => (
-          <button key={cat} onClick={() => onOpenFiltered(cat)}
-            style={{ background: 'var(--surface)', border: `1px solid var(--border)`, borderRadius: 12, padding: '18px 20px', textAlign: 'left', cursor: 'pointer', transition: 'all 180ms', borderLeft: `3px solid ${color}` }}
-            onMouseEnter={e => { e.currentTarget.style.background = bg; e.currentTarget.style.borderColor = border; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.borderLeftColor = color; }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{label}</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>{list.length}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>{fmt(list.reduce((s, d) => s + d.v, 0))}</div>
-            <div style={{ marginTop: 10, height: 4, borderRadius: 2, background: 'var(--surface-3)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: color, width: `${(list.length / total) * 100}%`, borderRadius: 2 }} />
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Offenders */}
-      {offenders.length > 0 && (
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Transportadores com aging expirado</div>
-          </div>
-          {offenders.map((tr, i) => {
-            const maxVal = offenders[0]?.value || 1;
-            return (
-              <button key={tr.name} onClick={() => onOpenFiltered(tr.name)}
-                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '12px 18px', gap: 12, background: 'none', border: 'none', borderBottom: i < offenders.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', textAlign: 'left', transition: 'background 120ms' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
-                onMouseLeave={e => e.currentTarget.style.background = ''}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>{tr.name}</div>
-                  <div style={{ height: 4, borderRadius: 2, background: 'var(--surface-3)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: 'var(--red)', width: `${(tr.value / maxVal) * 100}%`, borderRadius: 2, opacity: 0.7 }} />
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>{fmt(tr.value)}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>{tr.count} nota(s)</div>
-                </div>
-              </button>
-            );
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="text-xs font-bold text-gray-500 uppercase mb-3">Transportadores ofensores</div>
+          <div className="space-y-2">{offenders.map(tr => <button key={tr.name} onClick={() => onOpenFiltered(tr.name)} className="w-full flex items-center justify-between rounded-xl border border-gray-100 p-3 hover:bg-gray-50"><div><div className="text-sm font-semibold text-[#1a365d]">{tr.name}</div><div className="text-[11px] text-gray-400">{tr.count} nota(s)</div></div><div className="text-sm font-bold">{fmt(tr.value)}</div></button>)}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="text-xs font-bold text-gray-500 uppercase mb-3">Distribuição</div>
+          {[{ label: 'Expirado', list: exp, color: 'bg-red-500' }, { label: 'Próximo', list: near, color: 'bg-yellow-500' }, { label: 'No prazo', list: ok, color: 'bg-green-500' }].map(item => {
+            const total = active.length || 1;
+            const pct = (item.list.length / total) * 100;
+            return <div key={item.label} className="mb-4"><div className="flex items-center justify-between text-sm mb-1"><span>{item.label}</span><span>{item.list.length} · {fmt(item.list.reduce((s, d) => s + d.v, 0))}</span></div><div className="h-3 rounded-full bg-gray-100 overflow-hidden"><div className={`h-full ${item.color}`} style={{ width: `${pct}%` }} /></div></div>;
           })}
         </div>
-      )}
+      </div>
     </div>
   );
 }

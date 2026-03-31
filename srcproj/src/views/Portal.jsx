@@ -15,7 +15,6 @@ import UsuariosAdmin from './UsuariosAdmin';
 import StatusModal from '../components/StatusModal';
 import EmailModal from '../components/EmailModal';
 import NotificationBell from '../components/NotificationBell';
-import Sidebar from '../components/Sidebar';
 import { usePermissions } from '../hooks/usePermissions.jsx';
 import { useNoteMeta } from '../hooks/useNoteMeta.jsx';
 import { useAudit } from '../hooks/useAudit.jsx';
@@ -31,22 +30,8 @@ import {
 } from '../utils/helpers';
 import { useTheme } from '../hooks/useTheme.jsx';
 
+// Filtros padrão — incluindo agingCat para suporte ao filtro vindo do dashboard de Aging
 const DEFAULT_FILTERS = { search: '', area: 'TODOS', status: 'todos', transporters: [], agingCat: null };
-
-const PAGE_TITLES = {
-  dashboard: 'Dashboard',
-  cobranca: 'Gestão de Cobranças',
-  lancamento: 'Gestão de Devoluções',
-  nfDebito: 'NFs Débito',
-  transportadores: 'Por Transportador',
-  aging: 'Aging',
-  historico: 'Histórico',
-  auditoria: 'Auditoria',
-  usuarios: 'Usuários',
-  tr_dash: 'Dashboard',
-  tr_retorno: 'Devoluções',
-  tr_cobranca: 'Cobranças',
-};
 
 function Portal() {
   const { user, logout, isTransporter, transporterName } = useAuth();
@@ -60,9 +45,10 @@ function Portal() {
   const { noteMeta, saveMeta } = useNoteMeta();
   const { audit, logAudit } = useAudit(user);
   const { notifications, markRead, createNotification } = useNotifications(user);
-  const { isDark, toggleTheme } = useTheme();
+  const { theme, isDark, toggleTheme } = useTheme();
 
   const [tab, setTab] = useState(isTransporter ? 'tr_dash' : 'dashboard');
+  const [expandedId, setExpandedId] = useState(null);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selected, setSelected] = useState(new Set());
   const [detailTab, setDetailTab] = useState({});
@@ -77,7 +63,7 @@ function Portal() {
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
 
   useEffect(() => {
-    loadAll(); // auto-refresh via webhook acontece dentro do loadAll
+    loadAll().then(() => { if (!isTransporter) syncFromGitHub(true); });
   }, []); // eslint-disable-line
 
   const applyNoteFilter = (notes) => {
@@ -86,6 +72,7 @@ function Portal() {
     return notes.filter(n => Object.entries(nf).every(([k, v]) => n[k] === v));
   };
 
+  // CORRIGIDO: safeData com chaves corretas (cobr/pend, não cobranca/pendencias)
   const safeData = data || { cobr: [], pend: [] };
   const baseC = applyNoteFilter(getVisibleCobranca(safeData, statuses));
   const baseP = applyNoteFilter(getVisibleLancamento(safeData, statuses));
@@ -105,23 +92,51 @@ function Portal() {
       })
     : baseP;
 
-  const users = useMemo(() => [...new Set(history.map(h => h.user_name).filter(Boolean))], [history]);
-  const nfGroups = useMemo(() => groupByNfDeb(myC, extras, history), [myC, extras, history]);
-  const trSummary = useMemo(() => summarizeTransporters([...myC, ...myP], extras), [myC, myP, extras]);
+  const currentC = myC;
+  const currentP = myP;
+
+  const visibleTabsMap = {
+    dashboard: 'Dashboard',
+    cobranca: `Pend. Cobrança (${currentC.length})`,
+    lancamento: `Pend. Lançamento (${currentP.length})`,
+    nfDebito: 'NFs Débito',
+    transportadores: 'Por Transportador',
+    aging: '⏱ Aging',
+    historico: 'Histórico',
+    auditoria: 'Auditoria',
+    usuarios: 'Usuários',
+    tr_dash: 'Dashboard',
+    tr_retorno: `Devoluções (${currentP.length})`,
+    tr_cobranca: `Cobranças (${currentC.length})`,
+  };
+  const currentTabs = permissions.visibleTabs.map(id => ({ id, l: visibleTabsMap[id] })).filter(Boolean);
+
+  const users = useMemo(() => {
+    const set = new Set(history.map(h => h.user_name).filter(Boolean));
+    return [...set];
+  }, [history]);
+
+  const nfGroups = useMemo(() => groupByNfDeb(currentC, extras, history), [currentC, extras, history]);
+  const trSummary = useMemo(() => summarizeTransporters([...currentC, ...currentP], extras), [currentC, currentP, extras]);
 
   if (!data && loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
-        Conectando...
-      </div>
+    <div className="flex items-center justify-center h-screen premium-shell">
+      <div className="premium-card px-6 py-4 text-sm premium-muted">Carregando...</div>
+    </div>
+  );
+  if (!data) return (
+    <div className="flex items-center justify-center h-screen premium-shell">
+      <div className="premium-card px-6 py-4 text-sm premium-muted">Sem dados. Atualize do GitHub.</div>
     </div>
   );
 
   const changeTab = (t, patch = null) => {
     setTabFilters(prev => ({ ...prev, [tab]: { ...filters } }));
     const saved = tabFilters[t] || DEFAULT_FILTERS;
-    setFilters(patch ? { ...saved, ...patch } : saved);
+    const next = patch ? { ...saved, ...patch } : saved;
+    setFilters(next);
     setTab(t);
+    setExpandedId(null);
     setSelected(new Set());
   };
 
@@ -131,7 +146,7 @@ function Portal() {
   const openTrackingModal = (key, val, label, hasDate = false) => {
     setStatusModal({ open: true, type: 'tracking', key, val, label, showDate: hasDate, showNfFields: false, batchKeys: [] });
   };
-  const closeStatusModal = () => setStatusModal(prev => ({ ...prev, open: false }));
+  const closeStatusModal = () => setStatusModal({ open: false, type: 'status', key: '', val: '', label: '', showDate: false, showNfFields: false, batchKeys: [] });
 
   const getAutoMetaPatch = (type, value, currentMeta = {}) => {
     if (type === 'status') {
@@ -142,6 +157,7 @@ function Portal() {
         tr_contestou: { responsavel: 'interno', proxima_acao: 'Analisar contestação do transportador', cobrar_transportador: true, aguardando_documento: true },
         tr_concordou: { responsavel: 'interno', proxima_acao: 'Emitir notificação/NF débito', cobrar_transportador: true },
         tr_nao_resp: { responsavel: 'interno', proxima_acao: 'Revisar evidência e decidir continuidade', cobrar_transportador: true },
+        aprovar_ret: { responsavel: 'interno', proxima_acao: 'Analisar retorno antes de cobrar', cobrar_transportador: true },
         emitida: { responsavel: 'controladoria', proxima_acao: 'Acompanhar cobrança enviada ao transportador', cobrar_transportador: true },
         cobrada: { responsavel: 'controladoria', proxima_acao: 'Acompanhar pagamento da cobrança', cobrar_transportador: true },
         paga: { responsavel: 'encerrado', proxima_acao: 'Processo encerrado com pagamento', cobrar_transportador: true },
@@ -157,6 +173,7 @@ function Portal() {
       agendado: { responsavel: 'transportador', proxima_acao: 'Cumprir recebimento agendado', retorno_autorizado: true },
       perdeu_agenda: { responsavel: 'interno', proxima_acao: 'Reagendar recebimento', retorno_autorizado: true },
       dev_recusada: { responsavel: 'interno', proxima_acao: 'Analisar recusa do transportador', retorno_autorizado: true, aguardando_documento: true },
+      dev_apos_dt: { responsavel: 'interno', proxima_acao: 'Validar devolução após entrega', retorno_autorizado: true, aguardando_documento: true },
       extravio: { responsavel: 'interno', proxima_acao: 'Avaliar conversão para cobrança', retorno_autorizado: true, cobrar_transportador: true },
       entregue: { responsavel: 'interno', proxima_acao: 'Conferir comprovante e encerrar', retorno_autorizado: true },
       ret_nao_auto: { responsavel: 'encerrado', proxima_acao: 'Caso encerrado sem retorno autorizado', retorno_autorizado: false },
@@ -188,21 +205,24 @@ function Portal() {
         }
         if (user?.email) {
           await createNotification({
-            destinatario: user.email, tipo: statusModal.type,
-            titulo: 'Atualização na nota', mensagem: `${key} → ${statusModal.val}`,
-            nf_key: key, lido: false, link: '', created_at: new Date().toISOString(),
+            destinatario: user.email, tipo: statusModal.type, titulo: 'Atualização na nota',
+            mensagem: `${key} → ${statusModal.val}`, nf_key: key, lido: false, link: '',
+            created_at: new Date().toISOString(),
           });
         }
       }
       closeStatusModal();
       setSelected(new Set());
-    } catch (e) { alert(e.message); }
-    finally { setStatusLoading(false); }
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setStatusLoading(false);
+    }
   };
 
-  const openEmailForNotes = (notes, trNameArg = '') => {
+  const openEmailForNotes = (notes, transporterNameFromArg = '') => {
     if (!notes.length) return;
-    const trName = trNameArg || getTransporter(notes[0], extras) || 'Transportador';
+    const trName = transporterNameFromArg || getTransporter(notes[0], extras) || 'Transportador';
     setEmailModal({ open: true, notes, transporterName: trName, defaultTo: getTrEmails(trName) });
   };
 
@@ -214,15 +234,15 @@ function Portal() {
 
   const exportCurrentView = () => {
     if (tab === 'cobranca' || tab === 'tr_cobranca') {
-      exportToExcel(toExportRows(filterNotes(myC, filters, statuses, 'cobr', extras), statuses, extras, 'cobr', noteMeta), 'cobranca');
+      exportToExcel(toExportRows(filterNotes(currentC, filters, statuses, 'cobr', extras), statuses, extras, 'cobr', noteMeta), 'cobranca');
     } else if (tab === 'lancamento' || tab === 'tr_retorno') {
-      exportToExcel(toExportRows(filterNotes(myP, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'lancamento');
+      exportToExcel(toExportRows(filterNotes(currentP, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'lancamento');
     } else if (tab === 'historico') {
       exportToExcel(history, 'historico');
     } else if (tab === 'transportadores') {
       exportToExcel(trSummary, 'transportadores');
     } else if (tab === 'aging') {
-      exportToExcel(myP.map(n => ({ ...n, aging: calcAging(n) })), 'aging');
+      exportToExcel(currentP.map(n => ({ ...n, aging: calcAging(n) })), 'aging');
     } else if (tab === 'nfDebito') {
       exportToExcel(nfGroups.flatMap(g => g.notes.map(n => ({ nfDeb: g.nfDeb, pedido: g.pedido, nfd: n.nfd, nfo: n.nfo, cliente: n.cl, valor: n.v }))), 'nfs_debito');
     }
@@ -230,9 +250,11 @@ function Portal() {
 
   const exportComplete = () => {
     exportWorkbook({
-      cobranca: toExportRows(myC, statuses, extras, 'cobr', noteMeta),
-      lancamento: toExportRows(myP, statuses, extras, 'pend', noteMeta),
-      historico: history, auditoria: audit, transportadores: trSummary,
+      cobranca: toExportRows(currentC, statuses, extras, 'cobr', noteMeta),
+      lancamento: toExportRows(currentP, statuses, extras, 'pend', noteMeta),
+      historico: history,
+      auditoria: audit,
+      transportadores: trSummary,
       nfs_debito: nfGroups.flatMap(g => g.notes.map(n => ({ nfDeb: g.nfDeb, pedido: g.pedido, nfd: n.nfd, nfo: n.nfo, cliente: n.cl, valor: n.v }))),
     });
   };
@@ -240,7 +262,11 @@ function Portal() {
   const handleBatchGenerate = (notes) => {
     if (!notes.length) return alert('Selecione ao menos uma nota.');
     const grouped = {};
-    notes.forEach(n => { const tr = getTransporter(n, extras) || 'Transportador'; if (!grouped[tr]) grouped[tr] = []; grouped[tr].push(n); });
+    notes.forEach(n => {
+      const tr = getTransporter(n, extras) || 'Transportador';
+      if (!grouped[tr]) grouped[tr] = [];
+      grouped[tr].push(n);
+    });
     Object.entries(grouped).forEach(([tr, list]) => generateNotification(list, tr));
   };
 
@@ -250,7 +276,12 @@ function Portal() {
     if (!selected.size) return;
     const label = [...SO, ...TK].find(s => s.v === batchStatusValue)?.l || batchStatusValue;
     const modeType = SO.some(s => s.v === batchStatusValue) ? 'status' : 'tracking';
-    setStatusModal({ open: true, type: modeType, key: '', val: batchStatusValue, label, showDate: TK.find(t => t.v === batchStatusValue)?.hasDate || false, showNfFields: batchStatusValue === 'emitida', batchKeys: [...selected] });
+    setStatusModal({
+      open: true, type: modeType, key: '', val: batchStatusValue, label,
+      showDate: TK.find(t => t.v === batchStatusValue)?.hasDate || false,
+      showNfFields: batchStatusValue === 'emitida',
+      batchKeys: [...selected],
+    });
     setBatchStatusOpen(false);
   };
 
@@ -274,39 +305,43 @@ function Portal() {
     setEditTransport({ open: false, note: null, value: '' });
   };
 
-  const commonListProps = {
-    filters, setFilters, extras, statuses, selected, setSelected,
-    detailTab, setDetailTab, addChatMessage, user, isTransporter, history,
-    onStatus: openStatusModal, onTracking: openTrackingModal,
-    onOpenEmail: openEmailForNotes, onEditTransporter: openEditTransport,
-    acceptanceHandler, permissions, noteMeta, saveMeta, users,
-    onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
-    exportButton: permissions.canExport ? (
-      <button onClick={exportCurrentView} className="btn btn-outline btn-sm">
-        ⬇ Excel
-      </button>
-    ) : null,
-  };
+  const renderTab = () => {
+    const commonListProps = {
+      filters, setFilters, extras, statuses, expandedId, setExpandedId, selected, setSelected,
+      detailTab, setDetailTab, addChatMessage, user, isTransporter, history,
+      onStatus: openStatusModal, onTracking: openTrackingModal, onOpenEmail: openEmailForNotes,
+      onEditTransporter: openEditTransport, acceptanceHandler, permissions, noteMeta, saveMeta, users,
+      exportButton: permissions.canExport
+        ? <button onClick={exportCurrentView} className="px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-semibold h-fit">Excel desta aba</button>
+        : null,
+      onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
+    };
 
-  const renderContent = () => {
-    if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
-    if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
-    if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
+    if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={currentC} pendNotes={currentP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
+    if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={currentC} />;
+    if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={currentP} />;
     if (tab === 'nfDebito') return <NfsDebito groups={nfGroups} />;
     if (tab === 'transportadores') return (
       <Transportadores
         summary={trSummary}
         getEmails={getTrEmails}
         setEmails={setTrEmails}
-        onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
+        onOpenFiltered={(trName, mode) => changeTab(
+          mode === 'cobr' ? 'cobranca' : 'lancamento',
+          { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null }
+        )}
       />
     );
     if (tab === 'aging') return (
       <Aging
-        pendNotes={myP} extras={extras}
+        pendNotes={currentP}
+        extras={extras}
         onOpenFiltered={(value) => {
-          if (['expirado', 'proximo', 'ok'].includes(value))
+          // CORRIGIDO: agora passa o filtro de aging ao navegar para Pend. Lançamento
+          if (value === 'expirado' || value === 'proximo' || value === 'ok') {
             return changeTab('lancamento', { agingCat: value, search: '', area: 'TODOS', status: 'todos', transporters: [] });
+          }
+          // Transportador clicado: filtra por transportador
           return changeTab('lancamento', { transporters: [value], search: '', area: 'TODOS', status: 'todos', agingCat: null });
         }}
       />
@@ -314,82 +349,17 @@ function Portal() {
     if (tab === 'historico') return <Historico history={history} />;
     if (tab === 'auditoria') return <AuditLog audit={audit} />;
     if (tab === 'usuarios') return <UsuariosAdmin />;
-    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} />;
-    if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={myP} />;
-    if (tab === 'tr_cobranca' && isTransporter) return <PendCobranca {...commonListProps} notes={myC} />;
+    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={currentC} myP={currentP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} />;
+    if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={currentP} />;
+    if (tab === 'tr_cobranca' && isTransporter) return <PendCobranca {...commonListProps} notes={currentC} />;
     return null;
   };
 
-  const pageTitle = PAGE_TITLES[tab] || tab;
-  const pageDesc = tab === 'cobranca' ? `${myC.length} registros`
-    : tab === 'lancamento' ? `${myP.length} registros`
-    : lastUpdated ? `Atualizado ${new Date(lastUpdated).toLocaleString('pt-BR')}${lastSource ? ` · ${lastSource}` : ''}` : '';
-
   return (
-    <div className="app-layout">
-      {/* Sidebar */}
-      <Sidebar
-        tab={tab}
-        onChangeTab={changeTab}
-        visibleTabs={permissions.visibleTabs}
-        counts={{ cobranca: myC.length, lancamento: myP.length }}
-        user={user}
-        onLogout={logout}
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
-        isTransporter={isTransporter}
-      />
-
-      <div className="app-main">
-        {/* Top bar */}
-        <header className="topbar">
-          <div style={{ flex: 1 }}>
-            <div className="topbar-title">{pageTitle}</div>
-            {pageDesc && <div className="topbar-sub">{pageDesc}</div>}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {!isTransporter && permissions.canImport && (
-              <button onClick={() => syncFromGitHub(false)} className="btn btn-outline btn-sm">
-                🔄 Atualizar
-              </button>
-            )}
-            {permissions.canExport && (
-              <button onClick={exportComplete} className="btn btn-gold btn-sm">
-                ⬇ Excel completo
-              </button>
-            )}
-            <div style={{ position: 'relative' }}>
-              <NotificationBell
-                items={notifications}
-                open={notifOpen}
-                onToggle={() => setNotifOpen(v => !v)}
-                onRead={(n) => { markRead(n); setNotifOpen(false); }}
-              />
-            </div>
-            <div style={{ height: 28, width: 1, background: 'var(--border)', margin: '0 4px' }} />
-            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
-              {user?.name || user?.email}
-            </div>
-          </div>
-        </header>
-
-        {/* Content */}
-        <main className="app-content">
-          {!data && !loading ? (
-            <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-3)', fontSize: 14 }}>
-              Sem dados carregados. Clique em "Atualizar" para buscar do GitHub.
-            </div>
-          ) : (
-            renderContent()
-          )}
-        </main>
-      </div>
-
-      {/* Modals */}
+    <div className="min-h-screen premium-shell">
       <StatusModal
         open={statusModal.open}
-        title={statusModal.type === 'status' ? `Atualizar status: ${statusModal.label}` : `Atualizar tracking: ${statusModal.label}`}
+        title={statusModal.type === 'status' ? `Alterar status: ${statusModal.label}` : `Alterar tracking: ${statusModal.label}`}
         showDate={statusModal.showDate}
         showNfFields={statusModal.showNfFields}
         onClose={closeStatusModal}
@@ -405,52 +375,91 @@ function Portal() {
         onSent={handleEmailSent}
       />
 
-      {/* Edit transporter modal */}
       {editTransport.open && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditTransport({ open: false, note: null, value: '' })}>
-          <div className="modal">
-            <div className="modal-header">
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Editar transportador</h2>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{editTransport.note?.cl}</p>
-            </div>
-            <div className="modal-body">
+        <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100"><h2 className="text-base font-bold text-gray-800">Editar transportador</h2></div>
+            <div className="p-5 space-y-4">
+              <div className="text-sm text-gray-500">{editTransport.note?.cl}</div>
               <input
                 value={editTransport.value}
                 onChange={e => setEditTransport(prev => ({ ...prev, value: e.target.value }))}
                 placeholder="Nome do transportador"
-                className="input"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
-            <div className="modal-footer">
-              <button onClick={() => setEditTransport({ open: false, note: null, value: '' })} className="btn btn-outline">Cancelar</button>
-              <button onClick={saveTransportOverride} className="btn btn-gold">Salvar</button>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={() => setEditTransport({ open: false, note: null, value: '' })} className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-semibold">Cancelar</button>
+              <button onClick={saveTransportOverride} className="px-4 py-2 rounded-lg bg-[#1a365d] text-white text-sm font-semibold">Salvar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Batch status modal */}
       {batchStatusOpen && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setBatchStatusOpen(false)}>
-          <div className="modal" style={{ maxWidth: 400 }}>
-            <div className="modal-header">
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Mudar status em lote</h2>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{selected.size} registro(s) selecionado(s)</p>
-            </div>
-            <div className="modal-body">
-              <label className="input-label">Novo status</label>
-              <select value={batchStatusValue} onChange={e => setBatchStatusValue(e.target.value)} className="input">
+        <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100"><h2 className="text-base font-bold text-gray-800">Mudar status em lote</h2></div>
+            <div className="p-5 space-y-4">
+              <select value={batchStatusValue} onChange={e => setBatchStatusValue(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm">
                 <optgroup label="Cobrança">{SO.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}</optgroup>
                 <optgroup label="Tracking">{TK.filter(t => !['encaminhar', 'ret_nao_auto'].includes(t.v)).map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</optgroup>
               </select>
             </div>
-            <div className="modal-footer">
-              <button onClick={() => setBatchStatusOpen(false)} className="btn btn-outline">Cancelar</button>
-              <button onClick={confirmBatchStatus} className="btn btn-gold">Aplicar</button>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={() => setBatchStatusOpen(false)} className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-semibold">Cancelar</button>
+              <button onClick={confirmBatchStatus} className="px-4 py-2 rounded-lg bg-[#1a365d] text-white text-sm font-semibold">Continuar</button>
             </div>
           </div>
         </div>
       )}
+
+      <div className="portal-header px-6 py-5 text-white">
+        <div className="max-w-[1200px] mx-auto flex justify-between items-center flex-wrap gap-3">
+          <div>
+            <div className="flex items-center gap-3">
+              <img src="/linea-logo.png" alt="Logo Linea Alimentos" className="h-12 w-auto drop-shadow-sm" />
+              <div>
+                <h1 className="text-lg font-bold tracking-tight">{isTransporter ? 'Portal do Transportador' : 'Portal de Devoluções'}</h1>
+                <p className="text-xs text-white/55 mt-0.5">
+                  {isTransporter ? transporterName : `${currentC.length + currentP.length} total`}
+                  {lastUpdated && ` · ${new Date(lastUpdated).toLocaleString('pt-BR')}`}
+                  {lastSource && ` (${lastSource})`}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button type="button" data-theme={theme} onClick={toggleTheme} className="theme-toggle">
+              <span>{isDark ? 'Modo claro' : 'Modo noturno'}</span>
+              <span className="theme-toggle-track"><span className="theme-toggle-thumb" /></span>
+            </button>
+            <div className="px-3 py-1.5 bg-white/10 rounded-xl text-xs text-white/70 border border-white/10">
+              👤 <strong className="text-white">{user?.name}</strong>
+            </div>
+            {!isTransporter && permissions.canImport && (
+              <button onClick={() => syncFromGitHub(false)} className="px-3 py-1.5 rounded-xl text-xs font-semibold action-primary">🔄 GitHub</button>
+            )}
+            {permissions.canExport && (
+              <button onClick={exportComplete} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500 text-white shadow-lg shadow-emerald-900/10 hover:brightness-105 transition">⬇ Excel completo</button>
+            )}
+            <NotificationBell items={notifications} open={notifOpen} onToggle={() => setNotifOpen(v => !v)} onRead={(n) => { markRead(n); setNotifOpen(false); }} />
+            <button onClick={logout} className="px-3 py-1.5 rounded-xl text-xs font-semibold action-soft">Sair</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="portal-tabs px-4 overflow-x-auto">
+        <div className="max-w-[1200px] mx-auto flex gap-0.5">
+          {currentTabs.map(t => (
+            <button key={t.id} onClick={() => changeTab(t.id)} className={`portal-tab px-4 py-3 text-xs whitespace-nowrap transition ${tab === t.id ? 'active' : ''}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-[1280px] mx-auto p-5 md:p-6">{renderTab()}</div>
     </div>
   );
 }
@@ -462,10 +471,8 @@ export default function App() {
 function AppRouter() {
   const { user, loading, needsPwChange } = useAuth();
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
-        Conectando...
-      </div>
+    <div className="flex items-center justify-center h-screen premium-shell">
+      <div className="premium-card px-6 py-4 text-sm premium-muted">Conectando...</div>
     </div>
   );
   if (!user || needsPwChange) return <Login />;

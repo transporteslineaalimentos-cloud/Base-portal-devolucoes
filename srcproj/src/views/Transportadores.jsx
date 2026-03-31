@@ -1,87 +1,51 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { fmt } from '../utils/helpers';
+import { exportToExcel } from '../utils/excel';
 
 export default function Transportadores({ summary = [], getEmails, setEmails, onOpenFiltered }) {
-  const [editingTr, setEditingTr] = useState(null);
-  const [editEmail, setEditEmail] = useState('');
+  const [search, setSearch] = useState('');
+  const [editName, setEditName] = useState('');
+  const [email, setEmail] = useState('');
+  const filtered = useMemo(() => summary.filter(s => s.name.toLowerCase().includes(search.toLowerCase())), [summary, search]);
 
-  const openEdit = (name) => {
-    setEditingTr(name);
-    setEditEmail(getEmails?.(name) || '');
-  };
-
-  const saveEmail = async () => {
-    if (editingTr) {
-      await setEmails?.(editingTr, editEmail);
-      setEditingTr(null);
-    }
-  };
+  const openEdit = (name) => { setEditName(name); setEmail(getEmails(name)); };
+  const save = async () => { await setEmails(editName, email); setEditName(''); setEmail(''); alert('Emails atualizados.'); };
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-        {summary.map(tr => {
-          const emails = getEmails?.(tr.name) || '';
-          return (
-            <div key={tr.name} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px', transition: 'border-color 160ms' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-2)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr.name}</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--gold)', marginTop: 4 }}>{fmt(tr.value)}</div>
-                </div>
-                <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '6px 10px', textAlign: 'center', flexShrink: 0, marginLeft: 12 }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{tr.count}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 500, textTransform: 'uppercase' }}>notas</div>
-                </div>
+      <div className="flex gap-2 mb-3">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar transportador..." className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-xs outline-none" />
+        <button onClick={() => exportToExcel(filtered, 'transportadores')} className="px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-semibold">Excel desta aba</button>
+      </div>
+      <div className="grid lg:grid-cols-2 gap-3">
+        {filtered.map(tr => (
+          <div key={tr.name} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-bold text-[#1a365d]">{tr.name}</div>
+                <div className="text-[11px] text-gray-500">{tr.count} ocorrências · {fmt(tr.value)}</div>
+                <div className="text-[11px] text-gray-400 mt-1">Email(s): {getEmails(tr.name) || 'não cadastrado'}</div>
               </div>
-
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                {tr.cobr > 0 && (
-                  <button onClick={() => onOpenFiltered?.(tr.name, 'cobr')}
-                    style={{ flex: 1, padding: '5px', borderRadius: 6, background: 'var(--gold-dim)', border: '1px solid rgba(166,139,92,0.2)', fontSize: 11, color: 'var(--gold)', fontWeight: 600, cursor: 'pointer' }}>
-                    {tr.cobr} cobr.
-                  </button>
-                )}
-                {tr.pend > 0 && (
-                  <button onClick={() => onOpenFiltered?.(tr.name, 'pend')}
-                    style={{ flex: 1, padding: '5px', borderRadius: 6, background: 'var(--blue-dim)', border: '1px solid rgba(88,166,255,0.2)', fontSize: 11, color: 'var(--blue)', fontWeight: 600, cursor: 'pointer' }}>
-                    {tr.pend} dev.
-                  </button>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, color: emails ? 'var(--green)' : 'var(--text-3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {emails ? `✉ ${emails.split(';')[0]}...` : '✉ Sem email'}
-                </span>
-                <button onClick={() => openEdit(tr.name)} className="btn btn-outline btn-xs">
-                  Editar
-                </button>
-              </div>
+              <button onClick={() => openEdit(tr.name)} className="px-3 py-1.5 rounded-lg bg-gray-100 text-[11px] font-semibold">Editar email</button>
             </div>
-          );
-        })}
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              <button onClick={() => onOpenFiltered(tr.name, 'cobr')} className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-left"><div className="text-[10px] font-bold text-blue-700 uppercase">Cobrança</div><div className="text-lg font-bold text-blue-800">{tr.cobr}</div></button>
+              <button onClick={() => onOpenFiltered(tr.name, 'pend')} className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-left"><div className="text-[10px] font-bold text-orange-700 uppercase">Lançamento</div><div className="text-lg font-bold text-orange-800">{tr.pend}</div></button>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-left"><div className="text-[10px] font-bold text-gray-700 uppercase">Total</div><div className="text-lg font-bold text-gray-800">{tr.count}</div></div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Edit email modal */}
-      {editingTr && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditingTr(null)}>
-          <div className="modal" style={{ maxWidth: 440 }}>
-            <div className="modal-header">
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Emails do transportador</h2>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{editingTr}</p>
+      {editName && (
+        <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100"><h2 className="text-base font-bold text-gray-800">Editar email do transportador</h2></div>
+            <div className="p-5 space-y-4">
+              <div className="text-sm text-gray-500">{editName}</div>
+              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="email1@...; email2@..." className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" />
             </div>
-            <div className="modal-body">
-              <label className="input-label">Emails (separe com ;)</label>
-              <input value={editEmail} onChange={e => setEditEmail(e.target.value)}
-                placeholder="email1@transp.com; email2@transp.com" className="input" />
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setEditingTr(null)} className="btn btn-outline">Cancelar</button>
-              <button onClick={saveEmail} className="btn btn-gold">Salvar</button>
-            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2"><button onClick={() => setEditName('')} className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-semibold">Cancelar</button><button onClick={save} className="px-4 py-2 rounded-lg bg-[#1a365d] text-white text-sm font-semibold">Salvar</button></div>
           </div>
         </div>
       )}

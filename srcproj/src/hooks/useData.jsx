@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import {
   dbLoad, dbSave, dbLoadStatuses, dbSaveStatus, dbLoadHistory, dbAddHistory,
-  dbLoadExtras, dbSaveExtra, dbGetLastGithubSignal, notifyTransporter
+  dbLoadExtras, dbSaveExtra
 } from '../config/supabase';
 import { GH_URL } from '../config/constants';
 import { processExcel } from '../utils/excel';
@@ -32,24 +32,6 @@ export function DataProvider({ children }) {
       setHistory(hist || []);
       setExtras(ext || {});
       loadedRef.current = true;
-
-      // ── AUTO-REFRESH: detecta push do GitHub e atualiza base automaticamente ──
-      try {
-        const signal = await dbGetLastGithubSignal();
-        if (signal) {
-          const signalTime = new Date(signal.created_at).getTime();
-          const lastSync   = new Date(dbData?.updated_at || 0).getTime();
-          const planilhaModificada = signal.payload?.planilha_modificada !== false;
-          if (planilhaModificada && signalTime > lastSync) {
-            console.log('[AutoRefresh] Planilha atualizada no GitHub — sincronizando...');
-            // Roda em background sem bloquear o carregamento inicial
-            setTimeout(() => syncFromGitHub(true), 500);
-          }
-        }
-      } catch (e) {
-        console.warn('[AutoRefresh]', e.message);
-      }
-      // ─────────────────────────────────────────────────────────────────────────
     } catch (e) {
       console.error('Load error:', e);
     }
@@ -107,29 +89,8 @@ export function DataProvider({ children }) {
     };
     await dbAddHistory(entry);
     setHistory(prev => [entry, ...prev]);
-
-    // ── AUTO-NOTIFICAÇÃO: avisa transportador automaticamente quando cobr_tr ──
-    if (value === 'cobr_tr') {
-      try {
-        const allNotes = [...(data?.cobr || []), ...(data?.pend || [])];
-        const note = allNotes.find(n => `${n.nfd || ''}|${n.nfo || ''}` === key);
-        if (note) {
-          const exObj    = typeof extras[key] === 'object' ? (extras[key] || {}) : {};
-          const trName   = exObj.trOverride || note.tr || '';
-          const trEmailV = extras['tr_email:' + trName];
-          const tr_emails = typeof trEmailV === 'string' ? trEmailV : (trEmailV?.emails || '');
-          if (tr_emails) {
-            notifyTransporter({ nf_key: key, tr_emails, tr_name: trName,
-              valor: note.v, motivo: note.mo, nfd: note.nfd, nfo: note.nfo, cliente: note.cl });
-            console.log(`[AutoNotify] Notificando ${trName}`);
-          }
-        }
-      } catch (e) { console.warn('[AutoNotify]', e.message); }
-    }
-    // ──────────────────────────────────────────────────────────────────────────
-
     return entry;
-  }, [statuses, extras, data]);
+  }, [statuses, extras]);
 
   const setNoteTracking = useCallback(async (key, value, obs, userName, date = '') => {
     const oldVal = statuses[key] || 'tk:aguardando';
