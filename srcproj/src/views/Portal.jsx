@@ -5,6 +5,7 @@ import Login from './Login';
 import Dashboard from './Dashboard';
 import PendCobranca from './PendCobranca';
 import PendLancamento from './PendLancamento';
+import Acompanhamento from './Acompanhamento';
 import NfsDebito from './NfsDebito';
 import Transportadores from './Transportadores';
 import Aging from './Aging';
@@ -21,31 +22,32 @@ import { useNoteMeta } from '../hooks/useNoteMeta.jsx';
 import { useAudit } from '../hooks/useAudit.jsx';
 import { useNotifications } from '../hooks/useNotifications.jsx';
 import { uploadPdf } from '../config/supabase.js';
-import { SO, TK } from '../config/constants';
+import { SO, TK, TK_TRANSP_TRACKING } from '../config/constants';
 import { exportToExcel, exportWorkbook } from '../utils/excel';
 import { generateNotification } from '../utils/notification';
 import {
   filterNotes, getVisibleCobranca, getVisibleLancamento, getTransporter,
   getNoteKey, groupByNfDeb, summarizeTransporters, toExportRows,
-  calcAging, transporterCanSee
+  calcAging, transporterCanSee, getTracking
 } from '../utils/helpers';
 import { useTheme } from '../hooks/useTheme.jsx';
 
 const DEFAULT_FILTERS = { search: '', area: 'TODOS', status: 'todos', transporters: [], agingCat: null };
 
 const PAGE_TITLES = {
-  dashboard: 'Dashboard',
-  cobranca: 'Gestão de Cobranças',
-  lancamento: 'Gestão de Devoluções',
-  nfDebito: 'NFs Débito',
-  transportadores: 'Por Transportador',
-  aging: 'Aging',
-  historico: 'Histórico',
-  auditoria: 'Auditoria',
-  usuarios: 'Usuários',
-  tr_dash: 'Dashboard',
-  tr_retorno: 'Devoluções',
-  tr_cobranca: 'Cobranças',
+  dashboard:      'Dashboard',
+  cobranca:       'Gestão de Cobranças',
+  lancamento:     'Todas as Devoluções',
+  acompanhamento: 'Em Acompanhamento (Transportador)',
+  nfDebito:       'NFs Débito',
+  transportadores:'Por Transportador',
+  aging:          'Aging',
+  historico:      'Histórico',
+  auditoria:      'Auditoria',
+  usuarios:       'Usuários',
+  tr_dash:        'Dashboard',
+  tr_retorno:     'Devoluções',
+  tr_cobranca:    'Cobranças',
 };
 
 function Portal() {
@@ -217,6 +219,9 @@ function Portal() {
       exportToExcel(toExportRows(filterNotes(myC, filters, statuses, 'cobr', extras), statuses, extras, 'cobr', noteMeta), 'cobranca');
     } else if (tab === 'lancamento' || tab === 'tr_retorno') {
       exportToExcel(toExportRows(filterNotes(myP, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'lancamento');
+    } else if (tab === 'acompanhamento') {
+      const acompNotes = myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses)));
+      exportToExcel(toExportRows(filterNotes(acompNotes, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'acompanhamento');
     } else if (tab === 'historico') {
       exportToExcel(history, 'historico');
     } else if (tab === 'transportadores') {
@@ -292,6 +297,7 @@ function Portal() {
     if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
     if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
+    if (tab === 'acompanhamento') return <Acompanhamento {...commonListProps} notes={myP} />;
     if (tab === 'nfDebito') return <NfsDebito groups={nfGroups} />;
     if (tab === 'transportadores') return (
       <Transportadores
@@ -323,6 +329,7 @@ function Portal() {
   const pageTitle = PAGE_TITLES[tab] || tab;
   const pageDesc = tab === 'cobranca' ? `${myC.length} registros`
     : tab === 'lancamento' ? `${myP.length} registros`
+    : tab === 'acompanhamento' ? `${myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length} aguardando transportador`
     : lastUpdated ? `Atualizado ${new Date(lastUpdated).toLocaleString('pt-BR')}${lastSource ? ` · ${lastSource}` : ''}` : '';
 
   return (
@@ -332,7 +339,7 @@ function Portal() {
         tab={tab}
         onChangeTab={changeTab}
         visibleTabs={permissions.visibleTabs}
-        counts={{ cobranca: myC.length, lancamento: myP.length }}
+        counts={{ cobranca: myC.length, lancamento: myP.length, acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length }}
         user={user}
         onLogout={logout}
         isDark={isDark}

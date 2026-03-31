@@ -7,210 +7,137 @@ export const GH_URL = 'https://raw.githubusercontent.com/transporteslineaaliment
 export const supabase = createClient(SB_URL, SB_KEY);
 
 // ─────────────────────────────────────────────────────────────────
-// SO — Pend. Cobrança
-// CÓDIGOS IGUAIS AO BANCO — apenas adicionamos next_internal,
-// next_transp, final, transp e auto_next para controlar o fluxo.
-//
-// Fluxo SO (conforme caderno):
-//   pendente → validado
-//     ├─ cancelada          (tol. inválida — FINAL, obs obrigatória)
-//     └─ cobr_tr            (tol. válida + notifica transp — nota fica visível)
-//          ⚡auto → cobr_tr (fica no mesmo estado aguardando ação do transp.)
-//            transportador:
-//              ├─ tr_concordou  → aprovar_ret → emitida (FINAL)
-//              ├─ tr_contestou  → pendente (retorna para análise)
-//              └─ tr_nao_resp   → pendente (retorna para análise)
+// SO — Pend. Cobrança  (mesmos códigos do banco)
 // ─────────────────────────────────────────────────────────────────
 export const SO = [
-  {
-    v: 'pendente',      l: 'Pendente análise',                  c: '#6b7280', bg: '#f3f4f6',
+  { v: 'pendente',     l: 'Pendente análise',                    c: '#6b7280', bg: '#f3f4f6',
     final: false, transp: false,
-    next_internal: ['validado'],
-    next_transp: [],
-  },
-  {
-    v: 'validado',      l: 'Validada internamente',             c: '#d97706', bg: '#fffbeb',
+    next_internal: ['validado'], next_transp: [] },
+  { v: 'validado',     l: 'Validada internamente',               c: '#d97706', bg: '#fffbeb',
     final: false, transp: false,
-    // cancelada = tol. inválida (finaliza), cobr_tr = tol. válida + notifica
-    next_internal: ['cancelada', 'cobr_tr'],
-    next_transp: [],
-    // obs obrigatória ao escolher cancelada — controlado no StatusButtons
-  },
-  {
-    v: 'cobr_tr',       l: 'Aguardando posição do transportador', c: '#7c3aed', bg: '#f5f3ff',
-    final: false, transp: true,   // nota fica visível ao transportador
+    next_internal: ['cancelada', 'cobr_tr'], next_transp: [] },
+  { v: 'cobr_tr',      l: 'Aguardando posição do transportador', c: '#7c3aed', bg: '#f5f3ff',
+    final: false, transp: true,
     next_internal: [],
-    // transportador responde com uma dessas 3 opções:
-    next_transp: ['tr_concordou', 'tr_contestou', 'tr_nao_resp'],
-  },
-  {
-    v: 'tr_contestou',  l: 'Transportador contestou',           c: '#dc2626', bg: '#fef2f2',
+    next_transp: ['tr_concordou', 'tr_contestou', 'tr_nao_resp'] },
+  { v: 'tr_contestou', l: 'Transportador contestou',             c: '#dc2626', bg: '#fef2f2',
     final: false, transp: true,
-    // retorna para análise interna
-    next_internal: ['pendente'],
-    next_transp: [],
-  },
-  {
-    v: 'tr_concordou',  l: 'Transportador aprovou',             c: '#0ea5e9', bg: '#f0f9ff',
+    next_internal: ['pendente'], next_transp: [] },
+  { v: 'tr_concordou', l: 'Transportador aprovou',               c: '#0ea5e9', bg: '#f0f9ff',
     final: false, transp: true,
-    // interno deve emitir a NF de débito
-    next_internal: ['aprovar_ret'],
-    next_transp: [],
-  },
-  {
-    v: 'tr_nao_resp',   l: 'Transportador não responsável',     c: '#64748b', bg: '#f1f5f9',
+    next_internal: ['aprovar_ret'], next_transp: [] },
+  { v: 'tr_nao_resp',  l: 'Transportador não responsável',       c: '#64748b', bg: '#f1f5f9',
     final: false, transp: true,
-    // retorna para análise interna
-    next_internal: ['pendente'],
-    next_transp: [],
-  },
-  {
-    v: 'aprovar_ret',   l: 'Pend. emissão de débito',           c: '#f59e0b', bg: '#fffbeb',
+    next_internal: ['pendente'], next_transp: [] },
+  { v: 'aprovar_ret',  l: 'Pend. emissão de débito',             c: '#f59e0b', bg: '#fffbeb',
     final: false, transp: false,
     requires_nfd: true,
-    next_internal: ['emitida'],
-    next_transp: [],
-  },
-  {
-    v: 'emitida',       l: 'NF débito emitida',                 c: '#10b981', bg: '#ecfdf5',
+    next_internal: ['emitida'], next_transp: [] },
+  { v: 'emitida',      l: 'NF débito emitida',                   c: '#10b981', bg: '#ecfdf5',
     final: true,  transp: true,
-    next_internal: [],
-    next_transp: [],
-  },
-  {
-    v: 'cobrada',       l: 'Cobrada',                           c: '#3b82f6', bg: '#eff6ff',
-    final: true,  transp: false,
-    next_internal: [],
-    next_transp: [],
-  },
-  {
-    v: 'paga',          l: 'Paga',                              c: '#8b5cf6', bg: '#f5f3ff',
-    final: true,  transp: false,
-    next_internal: [],
-    next_transp: [],
-  },
-  {
-    v: 'cancelada',     l: 'Cancelada',                         c: '#9ca3af', bg: '#f8fafc',
-    final: true,  transp: false,
-    requires_obs: true,
-    next_internal: [],
-    next_transp: [],
-  },
+    next_internal: [], next_transp: [] },
+  { v: 'cobrada',      l: 'Cobrada',                             c: '#3b82f6', bg: '#eff6ff',
+    final: true,  transp: false, next_internal: [], next_transp: [] },
+  { v: 'paga',         l: 'Paga',                                c: '#8b5cf6', bg: '#f5f3ff',
+    final: true,  transp: false, next_internal: [], next_transp: [] },
+  { v: 'cancelada',    l: 'Cancelada',                           c: '#9ca3af', bg: '#f8fafc',
+    final: true,  transp: false, requires_obs: true,
+    next_internal: [], next_transp: [] },
 ];
 
 // ─────────────────────────────────────────────────────────────────
 // TK — Pend. Lançamento / Retorno
-// CÓDIGOS IGUAIS AO BANCO — apenas adicionamos o fluxo.
+// Fluxo conforme caderno + novos status do transportador:
 //
-// Fluxo TK (conforme caderno):
-//   aguardando → notificado
-//     ├─ ret_nao_auto         (retorno não autorizado — FINAL)
-//     └─ retorno_auto         (retorno autorizado — nota visível ao transp.)
-//          ⚡auto (transp. é notificado e atualiza o tracking):
-//            → em_transito
-//            → agendado
-//            → entregue  (FINAL ✓)
-//            → extravio  ⚠ → pode virar cobrança SO (encaminhar)
+// aguardando → notificado
+//   ├─ ret_nao_auto    (FINAL)
+//   └─ retorno_auto    (nota fica visível ao transp.)
+//        Transportador atualiza:
+//        → ag_consolidacao
+//        → em_transito        (Em trânsito p/ filial de origem)
+//        → recebida_filial    (Recebida na filial origem) *NOVO*
+//        → agend_solicitado   (Agendamento solicitado)   *NOVO*
+//        → agend_confirmado   (Agendamento confirmado)   *NOVO*
+//        → entregue           (FINAL ✓)
+//        → extravio           (pode gerar cobrança SO)
 // ─────────────────────────────────────────────────────────────────
 export const TK = [
-  {
-    v: 'aguardando',    l: 'Pendente análise',                  c: '#6b7280', bg: '#f3f4f6', i: '⏳',
+  { v: 'aguardando',      l: 'Pendente análise',              c: '#6b7280', bg: '#f3f4f6', i: '⏳',
     final: false, transp: false,
-    next_internal: ['notificado'],
-    next_transp: [],
-  },
-  {
-    v: 'notificado',    l: 'Em análise interna',                c: '#d97706', bg: '#fffbeb', i: '🧾',
+    next_internal: ['notificado'], next_transp: [] },
+  { v: 'notificado',      l: 'Em análise interna',            c: '#d97706', bg: '#fffbeb', i: '🧾',
     final: false, transp: false,
-    next_internal: ['ret_nao_auto', 'retorno_auto'],
-    next_transp: [],
-  },
-  {
-    v: 'ret_nao_auto',  l: 'Retorno não autorizado',            c: '#b91c1c', bg: '#fef2f2', i: '🚫',
-    final: true,  transp: false,
-    next_internal: [],
-    next_transp: [],
-  },
-  {
-    v: 'retorno_auto',  l: 'Retorno autorizado',                c: '#0ea5e9', bg: '#f0f9ff', i: '✅',
-    final: false, transp: true,   // nota fica visível ao transportador
-    next_internal: [],
-    // transportador atualiza o tracking com qualquer dessas opções:
-    next_transp: ['em_transito', 'agendado', 'entregue', 'extravio'],
-  },
-  {
-    v: 'em_transito',   l: 'Em retorno para o CD',              c: '#8b5cf6', bg: '#f5f3ff', i: '🚚',
+    next_internal: ['ret_nao_auto', 'retorno_auto'], next_transp: [] },
+  { v: 'ret_nao_auto',    l: 'Retorno não autorizado',        c: '#b91c1c', bg: '#fef2f2', i: '🚫',
+    final: true,  transp: false, next_internal: [], next_transp: [] },
+  { v: 'retorno_auto',    l: 'Retorno aprovado',              c: '#0ea5e9', bg: '#f0f9ff', i: '✅',
     final: false, transp: true,
     next_internal: [],
-    next_transp: ['agendado', 'entregue', 'extravio'],
-  },
-  {
-    v: 'agendado',      l: 'Recebimento agendado',              c: '#2563eb', bg: '#eff6ff', i: '📅', hasDate: true,
+    next_transp: ['ag_consolidacao', 'em_transito', 'extravio'] },
+  { v: 'ag_consolidacao', l: 'Ag. consolidação',              c: '#7c3aed', bg: '#f5f3ff', i: '📦',
     final: false, transp: true,
     next_internal: [],
-    next_transp: ['entregue', 'extravio', 'perdeu_agenda'],
-  },
-  {
-    v: 'perdeu_agenda', l: 'Perdeu agenda',                     c: '#dc2626', bg: '#fef2f2', i: '❌', hasDate: true,
+    next_transp: ['em_transito', 'extravio'] },
+  { v: 'em_transito',     l: 'Em trânsito p/ filial origem',  c: '#8b5cf6', bg: '#f5f3ff', i: '🚚',
     final: false, transp: true,
     next_internal: [],
-    next_transp: ['agendado', 'entregue'],
-  },
-  {
-    v: 'dev_recusada',  l: 'Transportador recusou retorno',     c: '#991b1b', bg: '#fef2f2', i: '🚫',
+    next_transp: ['recebida_filial', 'extravio'] },
+  { v: 'recebida_filial', l: 'Recebida na filial origem',     c: '#2563eb', bg: '#eff6ff', i: '🏪',
     final: false, transp: true,
-    next_internal: ['encaminhar', 'ret_nao_auto'],
-    next_transp: [],
-  },
-  {
-    v: 'dev_apos_dt',   l: 'Devolução após entrega',            c: '#b45309', bg: '#fffbeb', i: '📆',
+    next_internal: [],
+    next_transp: ['agend_solicitado', 'extravio'] },
+  { v: 'agend_solicitado',l: 'Agendamento solicitado',        c: '#0891b2', bg: '#ecfeff', i: '📅',
+    final: false, transp: true,
+    next_internal: [],
+    next_transp: ['agend_confirmado', 'extravio'] },
+  { v: 'agend_confirmado',l: 'Agendamento confirmado',        c: '#0d9488', bg: '#f0fdfa', i: '📋', hasDate: true,
+    final: false, transp: true,
+    next_internal: [],
+    next_transp: ['entregue', 'extravio'] },
+  { v: 'entregue',        l: 'Entregue',                      c: '#059669', bg: '#ecfdf5', i: '✅', hasDate: true,
+    final: true,  transp: true, next_internal: [], next_transp: [] },
+  { v: 'extravio',        l: 'Extravio informado',            c: '#7f1d1d', bg: '#fef2f2', i: '⛔',
+    final: false, transp: true,
+    next_internal: ['encaminhar'], next_transp: [] },
+  // Status legados (compatibilidade com dados existentes no banco)
+  { v: 'agendado',        l: 'Recebimento agendado',          c: '#2563eb', bg: '#eff6ff', i: '📅', hasDate: true,
+    final: false, transp: true,
+    next_internal: [], next_transp: ['entregue', 'extravio'] },
+  { v: 'perdeu_agenda',   l: 'Perdeu agenda',                 c: '#dc2626', bg: '#fef2f2', i: '❌', hasDate: true,
+    final: false, transp: true,
+    next_internal: [], next_transp: ['agend_solicitado', 'entregue'] },
+  { v: 'dev_recusada',    l: 'Transportador recusou retorno', c: '#991b1b', bg: '#fef2f2', i: '🚫',
+    final: false, transp: true,
+    next_internal: ['encaminhar', 'ret_nao_auto'], next_transp: [] },
+  { v: 'dev_apos_dt',     l: 'Devolução após entrega',        c: '#b45309', bg: '#fffbeb', i: '📆',
     final: false, transp: false,
-    next_internal: ['encaminhar', 'ret_nao_auto'],
-    next_transp: [],
-  },
-  {
-    v: 'extravio',      l: 'Extravio informado',                c: '#7f1d1d', bg: '#fef2f2', i: '⛔',
-    final: false, transp: true,
-    // extravio pode gerar nova cobrança SO via encaminhar
-    next_internal: ['encaminhar'],
-    next_transp: [],
-  },
-  {
-    v: 'entregue',      l: 'Entregue no CD',                    c: '#059669', bg: '#ecfdf5', i: '📦', hasDate: true,
-    final: true,  transp: true,
-    next_internal: [],
-    next_transp: [],
-  },
-
-  {
-    v: 'encaminhar',    l: 'Converter para cobrança',           c: '#dc2626', bg: '#fef2f2', i: '⚡',
-    final: true,  transp: false,
-    next_internal: [],
-    next_transp: [],
-  },
+    next_internal: ['encaminhar', 'ret_nao_auto'], next_transp: [] },
+  { v: 'encaminhar',      l: 'Converter para cobrança',       c: '#dc2626', bg: '#fef2f2', i: '⚡',
+    final: true,  transp: false, next_internal: [], next_transp: [] },
 ];
 
 // ─────────────────────────────────────────────────────────────────
-// Tudo abaixo é igual ao original — sem mudança
+// Helpers de lookup (iguais ao original)
 // ─────────────────────────────────────────────────────────────────
+export const TK_INTERNAL  = ['aguardando','notificado','ret_nao_auto','perdeu_agenda','dev_recusada','dev_apos_dt','encaminhar'];
+export const TK_TRANSPORT = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','entregue','extravio','agendado','perdeu_agenda'];
 
-export const TK_INTERNAL = ['aguardando', 'notificado', 'retorno_auto', 'ret_nao_auto', 'perdeu_agenda', 'dev_recusada', 'dev_apos_dt', 'encaminhar'];
-export const TK_TRANSPORT = ['em_transito', 'agendado', 'entregue', 'extravio'];
-
-export const COBR_TRANSPORT_VISIBLE    = ['cobr_tr', 'tr_contestou', 'tr_concordou', 'tr_nao_resp', 'emitida', 'cobrada', 'paga'];
+export const COBR_TRANSPORT_VISIBLE    = ['cobr_tr','tr_contestou','tr_concordou','tr_nao_resp','emitida','cobrada','paga'];
 export const COBR_TRANSPORT_ACTIONABLE = ['cobr_tr'];
-export const COBR_TRANSPORT_RESPONSES  = ['tr_contestou', 'tr_concordou', 'tr_nao_resp'];
+export const COBR_TRANSPORT_RESPONSES  = ['tr_contestou','tr_concordou','tr_nao_resp'];
 
-export const LANC_TRANSPORT_VISIBLE    = ['retorno_auto', 'em_transito', 'agendado', 'perdeu_agenda', 'dev_recusada', 'dev_apos_dt', 'extravio', 'entregue'];
-export const LANC_TRANSPORT_ACTIONABLE = ['retorno_auto', 'em_transito', 'agendado', 'perdeu_agenda', 'extravio'];
+export const LANC_TRANSPORT_VISIBLE    = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','entregue','extravio','agendado','perdeu_agenda','dev_recusada'];
+export const LANC_TRANSPORT_ACTIONABLE = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','agendado','perdeu_agenda','extravio'];
 
-export const COBR_FINALIZERS = ['emitida', 'cobrada', 'paga', 'cancelada'];
-export const LANC_FINALIZERS = ['entregue', 'encaminhar', 'ret_nao_auto'];
+export const COBR_FINALIZERS = ['emitida','cobrada','paga','cancelada'];
+export const LANC_FINALIZERS = ['entregue','encaminhar','ret_nao_auto'];
 export const LANC_MOVERS     = ['encaminhar'];
 
+// Status onde o transportador é responsável pelo tracking
+export const TK_TRANSP_TRACKING = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','agendado','perdeu_agenda','extravio'];
+
 // ─────────────────────────────────────────────────────────────────
-// getNextStatuses — retorna APENAS os próximos status válidos
-// dado o status atual e o perfil (interno ou transportador)
+// Lógica de próximos status válidos
 // ─────────────────────────────────────────────────────────────────
 export function getNextStatuses(mode, currentValue, isTransporter) {
   if (mode === 'cobr') {

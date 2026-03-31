@@ -32,9 +32,10 @@ const icons = {
 function buildNav(visibleTabs, counts = {}) {
   const all = [
     { id: 'dashboard',       label: 'Dashboard',         icon: icons.dashboard },
-    { id: 'cobranca',        label: 'Cobranças',          icon: icons.cobranca, count: counts.cobranca, parent: 'cobr_group' },
-    { id: 'nfDebito',        label: 'NFs Débito',         icon: icons.nfDebito,                        parent: 'cobr_group' },
-    { id: 'lancamento',      label: 'Devoluções',         icon: icons.lancamento, count: counts.lancamento },
+    { id: 'cobranca',        label: 'Cobranças',          icon: icons.cobranca,   count: counts.cobranca,   parent: 'cobr_group' },
+    { id: 'nfDebito',        label: 'NFs Débito',         icon: icons.nfDebito,                             parent: 'cobr_group' },
+    { id: 'lancamento',      label: 'Todas as notas',     icon: icons.lancamento, count: counts.lancamento, parent: 'devol_group' },
+    { id: 'acompanhamento',  label: 'Em acompanhamento',  icon: icons.aging,      count: counts.acompanhamento, parent: 'devol_group' },
     { id: 'transportadores', label: 'Transportadores',    icon: icons.transportador },
     { id: 'aging',           label: 'Aging',              icon: icons.aging },
     { id: 'historico',       label: 'Histórico',          icon: icons.historico },
@@ -51,12 +52,14 @@ function buildNav(visibleTabs, counts = {}) {
 export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {}, user, onLogout, isDark, onToggleTheme, isTransporter }) {
   const [collapsed, setCollapsed] = useState(false);
   const [cobrOpen, setCobrOpen] = useState(true);
+  const [devolOpen, setDevolOpen] = useState(true);
 
   const navItems = buildNav(visibleTabs, counts);
 
-  // Separate cobr group for internal users
-  const cobrGroup = navItems.filter(i => i.parent === 'cobr_group');
-  const mainItems = navItems.filter(i => !i.parent);
+  // Separate groups
+  const cobrGroup  = navItems.filter(i => i.parent === 'cobr_group');
+  const devolGroup = navItems.filter(i => i.parent === 'devol_group');
+  const mainItems  = navItems.filter(i => !i.parent);
 
   const renderItem = (item, isChild = false) => {
     const active = tab === item.id;
@@ -118,6 +121,25 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
                   </button>
                 )}
                 {(collapsed || cobrOpen) && cobrGroup.map(i => renderItem(i, !collapsed))}
+              </>
+            )}
+
+            {/* Devoluções group */}
+            {devolGroup.length > 0 && (
+              <>
+                {!collapsed && (
+                  <button
+                    onClick={() => setDevolOpen(v => !v)}
+                    className="nav-item"
+                    style={{ color: 'var(--text-2)', marginTop: 4 }}
+                  >
+                    <Icon d={icons.lancamento} size={16} className="nav-icon" />
+                    <span className="nav-label" style={{ flex: 1 }}>Devoluções</span>
+                    <Icon d={icons.chevronDown} size={12}
+                      style={{ transform: devolOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
+                  </button>
+                )}
+                {(collapsed || devolOpen) && devolGroup.map(i => renderItem(i, !collapsed))}
               </>
             )}
 

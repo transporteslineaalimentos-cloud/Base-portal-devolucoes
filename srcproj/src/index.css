@@ -49,6 +49,43 @@
 }
 
 /* ═══════════════════════════════════════════════════
+   TEMA CLARO — sobrescreve quando body.theme-light
+═══════════════════════════════════════════════════ */
+body.theme-light {
+  --bg:         #F4F6F9;
+  --surface:    #FFFFFF;
+  --surface-2:  #EDF0F5;
+  --surface-3:  #E2E7EF;
+
+  --border:     #D8DDE8;
+  --border-2:   #C4CDD8;
+
+  --gold:       #8A6B3A;
+  --gold-light: #A07C45;
+  --gold-dim:   rgba(138,107,58,0.12);
+  --gold-glow:  rgba(138,107,58,0.2);
+
+  --text:       #1A1F2E;
+  --text-2:     #5A6478;
+  --text-3:     #94A0B4;
+
+  --green:      #1A9E3B;
+  --green-dim:  rgba(26,158,59,0.1);
+  --red:        #D92B2B;
+  --red-dim:    rgba(217,43,43,0.1);
+  --yellow:     #B8860B;
+  --yellow-dim: rgba(184,134,11,0.1);
+  --blue:       #1A6ECC;
+  --blue-dim:   rgba(26,110,204,0.1);
+  --purple:     #7B4FC4;
+  --purple-dim: rgba(123,79,196,0.1);
+
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.08);
+  --shadow-md:  0 8px 24px rgba(0,0,0,0.12);
+  --shadow-lg:  0 20px 60px rgba(0,0,0,0.16);
+}
+
+/* ═══════════════════════════════════════════════════
    RESET & BASE
 ═══════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; }
