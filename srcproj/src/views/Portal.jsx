@@ -10,6 +10,8 @@ import Acompanhamento from './Acompanhamento';
 import NfsDebito from './NfsDebito';
 import Transportadores from './Transportadores';
 import Aging from './Aging';
+import ProtheusSync from './ProtheusSync';
+import RiscoTransportadores from './RiscoTransportadores';
 import TransportDash from './TransportDash';
 import AuditLog from './AuditLog';
 import UsuariosAdmin from './UsuariosAdmin';
@@ -44,6 +46,8 @@ const PAGE_TITLES = {
   transportadores:'Por Transportador',
   aging:          'Aging',
   auditoria:      'Auditoria',
+  risco:          'Score de Risco por Transportadora',
+  protheus_sync:  'Integração Protheus',
   usuarios:       'Usuários',
   tr_dash:        'Dashboard',
   tr_retorno:     'Devoluções',
@@ -55,7 +59,7 @@ function Portal() {
   const permissions = usePermissions(user);
   const portalData = useData();
   const {
-    data, statuses, history, extras, transportadores, lastUpdated, lastSource, loading,
+    data, statuses, history, extras, transportadores, kpiSnapshots, lastUpdated, lastSource, loading,
     loadAll, syncFromGitHub, setNoteStatus, setNoteTracking,
     addChatMessage, getTrEmails, setTrEmails, saveTransportador, patchExtra
   } = portalData;
@@ -306,7 +310,7 @@ function Portal() {
 
   const renderContent = () => {
     if (tab === 'dashboard' && !isTransporter)     return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
-    if (tab === 'dashboard_adv' && !isTransporter) return <DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} />;
+    if (tab === 'dashboard_adv' && !isTransporter) return <DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} />;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
     if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
     if (tab === 'acompanhamento') return <Acompanhamento {...commonListProps} notes={myP} />;
@@ -331,9 +335,11 @@ function Portal() {
         }}
       />
     );
+    if (tab === 'risco') return <RiscoTransportadores />;
     if (tab === 'auditoria') return <AuditLog audit={audit} />;
+    if (tab === 'protheus_sync') return <ProtheusSync />;
     if (tab === 'usuarios') return <UsuariosAdmin />;
-    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} />;
+    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} onOpenNote={(n) => { setDrawerNote(n); setDrawerMode(n.t === 'P' ? 'pend' : 'cobr'); }} />;
     if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={myP} />;
     if (tab === 'tr_cobranca' && isTransporter) return <PendCobranca {...commonListProps} notes={myC} />;
     return null;

@@ -42,18 +42,22 @@ function Card({ title, subtitle, children, span = 1, minH = 260, action }) {
   );
 }
 
-function KPI({ label, value, sub, color = C.gold, delta, icon }) {
+function KPI({ label, value, sub, color = C.gold, delta, icon, higherIsBetter = true }) {
   const isUp = delta > 0;
+  const isGood = higherIsBetter ? !isUp : isUp;  // contexto define se subir é bom ou ruim
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '18px 20px', borderLeft: `3px solid ${color}` }}>
       {icon && <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>}
       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', lineHeight: 1, marginBottom: 4, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       <div style={{ fontSize: 12, color, fontWeight: 600 }}>{sub}</div>
-      {delta != null && (
-        <div style={{ fontSize: 11, color: isUp ? C.red : C.green, marginTop: 4, fontWeight: 600 }}>
-          {isUp ? '↑' : '↓'} {Math.abs(delta)}% vs mês anterior
+      {delta != null && Math.abs(delta) > 0.1 && (
+        <div style={{ fontSize: 11, color: isGood ? C.green : C.red, marginTop: 4, fontWeight: 600 }}>
+          {isUp ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}% vs mês anterior
         </div>
+      )}
+      {delta != null && Math.abs(delta) <= 0.1 && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>→ estável vs mês anterior</div>
       )}
     </div>
   );
@@ -139,9 +143,69 @@ function RecoveryGauge({ pct }) {
 }
 
 /* ── Main ─────────────────────────────────────────────────────── */
-export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, noteMeta, extras = {} }) {
+export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, noteMeta, extras = {}, kpiSnapshots = [] }) {
   const [viewPeriod] = useState('todos');
   const all = [...cobrNotes, ...pendNotes];
+
+  // ── Snapshots históricos — ordenados do mais antigo ao mais novo ───
+  const snapsOrdered = useMemo(() =>
+    [...kpiSnapshots].sort((a, b) => a.mes > b.mes ? 1 : -1)
+  , [kpiSnapshots]);
+
+  // ── MoM: pegar mês anterior dos snapshots ─────────────────────────
+  const prevSnap = snapsOrdered.length >= 2 ? snapsOrdered[snapsOrdered.length - 2] : null;
+  const mom = useMemo(() => {
+    if (!prevSnap) return {};
+    const safe = (v) => Number(v) || 0;
+    return {
+      cobr:   { cur: cobrNotes.length,  prev: safe(prevSnap.total_cobr), pct: prevSnap.total_cobr  ? ((cobrNotes.length  - safe(prevSnap.total_cobr))  / safe(prevSnap.total_cobr)  * 100) : 0 },
+      pend:   { cur: pendNotes.length,  prev: safe(prevSnap.total_pend), pct: prevSnap.total_pend  ? ((pendNotes.length  - safe(prevSnap.total_pend))  / safe(prevSnap.total_pend)  * 100) : 0 },
+      aging:  { cur: 0,                 prev: safe(prevSnap.aging_med),  pct: 0 },  // preenchido em kpis
+      recup:  { cur: 0,                 prev: safe(prevSnap.taxa_recup), pct: 0 },
+    };
+  }, [prevSnap, cobrNotes.length, pendNotes.length]);
+
+  // ── Previsão de recuperação — regressão linear simples ────────────
+  const forecast = useMemo(() => {
+    if (snapsOrdered.length < 3) return [];
+    const pts = snapsOrdered.map((s, i) => ({ x: i, y: Number(s.valor_recup) || 0, mes: s.mes }));
+    const n   = pts.length;
+    const sx  = pts.reduce((s, p) => s + p.x, 0);
+    const sy  = pts.reduce((s, p) => s + p.y, 0);
+    const sxy = pts.reduce((s, p) => s + p.x * p.y, 0);
+    const sx2 = pts.reduce((s, p) => s + p.x * p.x, 0);
+    const den = n * sx2 - sx * sx;
+    if (!den) return [];
+    const slope     = (n * sxy - sx * sy) / den;
+    const intercept = (sy - slope * sx) / n;
+    const proj = [1, 2, 3].map(d => {
+      const x   = n - 1 + d;
+      const mes = new Date();
+      mes.setMonth(mes.getMonth() + d);
+      return {
+        mes: mes.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        projecao: Math.max(Math.round(intercept + slope * x), 0),
+        tipo: 'proj',
+      };
+    });
+    const hist = pts.slice(-4).map(p => ({
+      mes: new Date(p.mes).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+      recuperado: Math.round(p.y),
+      tipo: 'real',
+    }));
+    return [...hist, ...proj];
+  }, [snapsOrdered]);
+
+  // Trend real dos snapshots para substituir o "fake"
+  const trendReal = useMemo(() =>
+    snapsOrdered.slice(-7).map(s => ({
+      mes: new Date(s.mes).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+      cobr: Number(s.total_cobr) || 0,
+      pend: Number(s.total_pend) || 0,
+      recuperado: Number(s.valor_recup) || 0,
+      aging: Number(s.aging_med) || 0,
+    }))
+  , [snapsOrdered]);
 
   /* ── Dados computados ──────────────────────────────────────── */
   const kpis = useMemo(() => {
@@ -248,14 +312,19 @@ export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, note
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-      {/* ── SEÇÃO 1: KPIs principais ──────────────────────────── */}
+      {/* ── SEÇÃO 1: KPIs principais com MoM real ─────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-        <KPI label="Volume total" value={all.length} sub={fmt(all.reduce((s,n)=>s+(n.v||0),0))} color={C.gold} icon="📦" />
-        <KPI label="Cobranças em aberto" value={kpis.cobrAberto} sub={fmt(kpis.totalCobrV)} color={C.amber} icon="🎯" />
-        <KPI label="Já recuperado" value={kpis.cobrFech} sub={`${kpis.pctRecup.toFixed(1)}% taxa recup.`} color={C.green} icon="✅" />
-        <KPI label="Aging médio" value={`${kpis.agingMed.toFixed(0)}d`} sub={`${all.filter(n=>(calcAging(n)||0)>30).length} acima de 30d`} color={kpis.agingMed > 30 ? C.red : C.teal} icon="⏱" />
+        <KPI label="Volume total" value={all.length} sub={fmt(all.reduce((s,n)=>s+(n.v||0),0))} color={C.gold} icon="📦"
+          delta={mom.cobr ? mom.cobr.pct + mom.pend?.pct / 2 : null} higherIsBetter={false} />
+        <KPI label="Cobranças em aberto" value={kpis.cobrAberto} sub={fmt(kpis.totalCobrV)} color={C.amber} icon="🎯"
+          delta={mom.cobr?.pct} higherIsBetter={false} />
+        <KPI label="Já recuperado" value={kpis.cobrFech} sub={`${kpis.pctRecup.toFixed(1)}% taxa recup.`} color={C.green} icon="✅"
+          delta={prevSnap?.taxa_recup ? ((kpis.pctRecup/100 - Number(prevSnap.taxa_recup)) / Number(prevSnap.taxa_recup) * 100) : null} higherIsBetter={true} />
+        <KPI label="Aging médio" value={`${kpis.agingMed.toFixed(0)}d`} sub={`${all.filter(n=>(calcAging(n)||0)>30).length} acima de 30d`} color={kpis.agingMed > 30 ? C.red : C.teal} icon="⏱"
+          delta={prevSnap?.aging_med ? ((kpis.agingMed - Number(prevSnap.aging_med)) / Number(prevSnap.aging_med) * 100) : null} higherIsBetter={false} />
         <KPI label="Ticket médio" value={fmt(kpis.ticketMed)} sub={`${cobrNotes.length} notas de cobrança`} color={C.purple} icon="💰" />
-        <KPI label="Devoluções ativas" value={pendNotes.filter(n=>!['entregue','encaminhar','ret_nao_auto'].includes(getTracking(n,statuses))).length} sub={fmt(pendNotes.reduce((s,n)=>s+(n.v||0),0))} color={C.blue} icon="🔄" />
+        <KPI label="Devoluções ativas" value={pendNotes.filter(n=>!['entregue','encaminhar','ret_nao_auto'].includes(getTracking(n,statuses))).length} sub={fmt(pendNotes.reduce((s,n)=>s+(n.v||0),0))} color={C.blue} icon="🔄"
+          delta={mom.pend?.pct} higherIsBetter={false} />
       </div>
 
       {/* ── SEÇÃO 2: Visão Financeira ─────────────────────────── */}
@@ -482,17 +551,19 @@ export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, note
         </div>
       </div>
 
-      {/* ── SEÇÃO 6: Tendência simulada ─────────────────────── */}
+      {/* ── SEÇÃO 6: Histórico real + Previsão de Recuperação ── */}
       <div>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ height: 2, width: 24, background: C.purple }} /> tendência histórica (6 meses)
-          <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 400 }}>— valores estimados para fins de análise</span>
+          <div style={{ height: 2, width: 24, background: C.purple }} /> tendência histórica e previsão
+          {trendReal.length > 1 && <span style={{ fontSize: 9, color: '#3FB950', fontWeight: 600 }}>● dados reais dos snapshots mensais</span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-          <Card title="Evolução de cobranças e devoluções" subtitle="Volume mensal de notas abertas">
+
+          {/* Evolução real de cobranças + devoluções */}
+          <Card title="Evolução mensal — histórico real" subtitle="Volume de cobranças e devoluções por mês (banco de dados)">
             <div style={{ height: 220 }}>
               <ResponsiveContainer>
-                <AreaChart data={trendFake}>
+                <AreaChart data={trendReal.length > 1 ? trendReal : trendFake}>
                   <defs>
                     <linearGradient id="gCobr" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={C.amber} stopOpacity={0.3} />
@@ -515,27 +586,50 @@ export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, note
             </div>
           </Card>
 
-          <Card title="Motivos — pareto" subtitle="80% do valor vem de poucos motivos">
-            <div style={{ height: 220 }}>
-              <ResponsiveContainer>
-                <BarChart data={motivoMap.slice(0, 6)} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--text-3)' }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 9, fill: 'var(--text-2)' }} />
-                  <Tooltip {...tip} formatter={v => fmt(v)} />
-                  <Bar dataKey="value" name="Valor" radius={[0, 4, 4, 0]}>
-                    {motivoMap.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Previsão de recuperação financeira */}
+          <Card title="Previsão de recuperação" subtitle="Próximos 3 meses — regressão linear">
+            {forecast.length > 1 ? (
+              <>
+                <div style={{ height: 160 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={forecast} barCategoryGap="20%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                      <XAxis dataKey="mes" tick={{ fontSize: 9, fill: 'var(--text-3)' }} />
+                      <YAxis tick={{ fontSize: 9, fill: 'var(--text-3)' }} width={32} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                      <Tooltip {...tip} formatter={v => fmt(v)} />
+                      <Bar dataKey="recuperado" name="Recuperado real" radius={[4,4,0,0]}>
+                        {forecast.map((d,i) => <Cell key={i} fill={d.tipo === 'proj' ? 'rgba(63,185,80,.3)' : C.green} />)}
+                      </Bar>
+                      <Bar dataKey="projecao" name="Projeção" radius={[4,4,0,0]}>
+                        {forecast.map((d,i) => <Cell key={i} fill={d.tipo === 'proj' ? C.teal : 'transparent'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {forecast.filter(d => d.tipo === 'proj').map(d => (
+                    <div key={d.mes} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ color: 'var(--text-3)' }}>{d.mes}</span>
+                      <span style={{ fontWeight: 700, color: C.teal }}>{fmt(d.projecao)} <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 400 }}>estimado</span></span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 9, color: 'var(--text-3)', marginTop: 4, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+                    Regressão linear sobre últimos {snapsOrdered.length} meses de dados
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: 'var(--text-3)', fontSize: 12, paddingTop: 20, textAlign: 'center' }}>
+                Necessário ao menos 3 meses de histórico para gerar previsão.
+              </div>
+            )}
           </Card>
         </div>
       </div>
 
       {/* Footer */}
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-3)', padding: '8px 0 16px' }}>
-        Dashboard Executivo · Linea Alimentos · Dados em tempo real
+        Dashboard Executivo · Linea Alimentos · Dados em tempo real · {new Date().toLocaleDateString('pt-BR')}
       </div>
     </div>
   );

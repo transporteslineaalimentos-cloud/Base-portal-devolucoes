@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useCallback, useRef } from 'react'
 import {
   dbLoad, dbSave, dbLoadStatuses, dbSaveStatus, dbLoadHistory, dbAddHistory,
   dbLoadExtras, dbSaveExtra, dbGetLastGithubSignal, notifyTransporter,
-  dbLoadTransportadores, dbSaveTransportador, dbGetTransportadorEmails
+  dbLoadTransportadores, dbSaveTransportador, dbGetTransportadorEmails,
+  dbLoadKpiSnapshots
 } from '../config/supabase';
 import { GH_URL } from '../config/constants';
 import { processExcel } from '../utils/excel';
@@ -15,6 +16,7 @@ export function DataProvider({ children }) {
   const [history, setHistory] = useState([]);
   const [extras, setExtras] = useState({});
   const [transportadores, setTransportadores] = useState([]);  // nova tabela dedicada
+  const [kpiSnapshots, setKpiSnapshots] = useState([]);         // histórico mensal MoM
   const [lastUpdated, setLastUpdated] = useState('');
   const [lastSource, setLastSource] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,8 +25,8 @@ export function DataProvider({ children }) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [dbData, sts, hist, ext, trs] = await Promise.all([
-        dbLoad(), dbLoadStatuses(), dbLoadHistory(), dbLoadExtras(), dbLoadTransportadores()
+      const [dbData, sts, hist, ext, trs, snaps] = await Promise.all([
+        dbLoad(), dbLoadStatuses(), dbLoadHistory(), dbLoadExtras(), dbLoadTransportadores(), dbLoadKpiSnapshots()
       ]);
 
       // Só atualiza data se veio algo válido — evita apagar dados existentes por falha de rede/token
@@ -37,6 +39,7 @@ export function DataProvider({ children }) {
       if (hist && hist.length > 0) setHistory(hist);
       if (ext  && Object.keys(ext).length > 0) setExtras(ext);
       if (trs  && trs.length > 0) setTransportadores(trs);
+      if (snaps && snaps.length > 0) setKpiSnapshots(snaps);
 
       loadedRef.current = true;
 
@@ -230,7 +233,7 @@ export function DataProvider({ children }) {
 
   return (
     <DataContext.Provider value={{
-      data, statuses, history, extras, transportadores, lastUpdated, lastSource, loading,
+      data, statuses, history, extras, transportadores, kpiSnapshots, lastUpdated, lastSource, loading,
       loadAll, syncFromGitHub, importExcel,
       setNoteStatus, setNoteTracking,
       saveExtra, patchExtra, addChatMessage, getChat, getTrEmails, setTrEmails, saveTransportador,

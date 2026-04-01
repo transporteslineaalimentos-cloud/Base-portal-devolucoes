@@ -19,6 +19,8 @@ const icons = {
   aging:         'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm0-6V12l4 2',
   historico:     'M3 12h18M3 6h18M3 18h18',
   auditoria:     'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  protheus_sync: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm13 1v4m-2-2h4',
+  risco:         'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zm0-13v5m0 3v1',
   usuarios:      'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm14 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
   chevronLeft:   'M15 18l-6-6 6-6',
   chevronRight:  'M9 18l6-6-6-6',
@@ -40,7 +42,9 @@ function buildNav(visibleTabs, counts = {}) {
     { id: 'acompanhamento',  label: 'Em acompanhamento',  icon: icons.aging,      count: counts.acompanhamento, parent: 'devol_group' },
     { id: 'transportadores', label: 'Transportadores',    icon: icons.transportador },
     { id: 'aging',           label: 'Aging',              icon: icons.aging },
+    { id: 'risco',           label: 'Score de Risco',     icon: icons.risco },
     { id: 'auditoria',       label: 'Auditoria',          icon: icons.auditoria },
+    { id: 'protheus_sync',   label: 'Integração Protheus', icon: icons.protheus_sync },
     { id: 'usuarios',        label: 'Usuários',           icon: icons.usuarios },
     // transportador
     { id: 'tr_dash',         label: 'Dashboard',          icon: icons.dashboard },

@@ -3,6 +3,7 @@ import { fmt, getNoteKey, getStatus, getTracking, getTransporter, getSOByValue,
   getTKByValue, calcAging, agingCategory, checkDateMatch, deriveWorkflow } from '../utils/helpers';
 import StatusButtons from './StatusButtons';
 import ChatPanel from './ChatPanel';
+import NoteTimeline from './NoteTimeline';
 import NoteMetaPanel from './NoteMetaPanel';
 import AcceptanceForm from './AcceptanceForm';
 import ProtectedAction from './ProtectedAction';
@@ -53,9 +54,10 @@ export default function NoteDrawer({
   const processInfo = deriveWorkflow(mode, st, meta);
 
   const tabs = [
-    { id: 'info',    label: 'Detalhes' },
-    { id: 'actions', label: 'Ações' },
-    { id: 'chat',    label: `Chat${chat.length > 0 ? ` (${chat.length})` : ''}` },
+    { id: 'info',     label: 'Detalhes' },
+    { id: 'actions',  label: 'Ações' },
+    { id: 'timeline', label: `Linha do tempo${noteHist.length > 0 ? ` (${noteHist.length})` : ''}` },
+    { id: 'chat',     label: `Chat${chat.length > 0 ? ` (${chat.length})` : ''}` },
     ...(!isTransporter ? [{ id: 'meta', label: 'Gestão' }] : []),
   ];
 
@@ -322,6 +324,13 @@ export default function NoteDrawer({
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── TAB: LINHA DO TEMPO ── */}
+          {activeTab === 'timeline' && (
+            <div style={{ padding: '0 4px' }}>
+              <NoteTimeline history={history} noteKey={key} />
             </div>
           )}
 
