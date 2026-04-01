@@ -79,7 +79,13 @@ function Portal() {
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
 
   useEffect(() => {
-    loadAll(); // auto-refresh via webhook acontece dentro do loadAll
+    loadAll();
+    // Auto-reload silencioso a cada 5 minutos para manter dados atualizados
+    // e renovar a sessão com o Supabase preventivamente
+    const interval = setInterval(() => {
+      loadAll();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []); // eslint-disable-line
 
   const applyNoteFilter = (notes) => {

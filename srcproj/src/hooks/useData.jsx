@@ -26,14 +26,18 @@ export function DataProvider({ children }) {
       const [dbData, sts, hist, ext, trs] = await Promise.all([
         dbLoad(), dbLoadStatuses(), dbLoadHistory(), dbLoadExtras(), dbLoadTransportadores()
       ]);
+
+      // Só atualiza data se veio algo válido — evita apagar dados existentes por falha de rede/token
       if (dbData?.data) {
         setData(dbData.data);
         setLastUpdated(dbData.updated_at || '');
       }
-      setStatuses(sts || {});
-      setHistory(hist || []);
-      setExtras(ext || {});
-      setTransportadores(trs || []);
+      // Statuses, history, extras e transportadores: só atualiza se retornou dados não-vazios
+      if (sts && Object.keys(sts).length > 0) setStatuses(sts);
+      if (hist && hist.length > 0) setHistory(hist);
+      if (ext  && Object.keys(ext).length > 0) setExtras(ext);
+      if (trs  && trs.length > 0) setTransportadores(trs);
+
       loadedRef.current = true;
 
       // ── AUTO-REFRESH: detecta push do GitHub e atualiza base automaticamente ──

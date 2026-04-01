@@ -1,10 +1,30 @@
 import { supabase, SB_URL, SB_KEY } from './constants';
 
+// ── Sincroniza o token do localStorage com o cliente Supabase ──────────────
+// Chamada antes de qualquer query que exija autenticação.
+// Sem isso, o cliente usa apenas a anon key e operações autenticadas falham.
+export function syncAuthToken() {
+  try {
+    const token   = localStorage.getItem('sb_token');
+    const refresh = localStorage.getItem('sb_refresh');
+    if (token && refresh) {
+      supabase.auth.setSession({ access_token: token, refresh_token: refresh })
+        .catch(() => {/* ignora erros silenciosos */});
+    }
+  } catch (e) { /* localStorage pode estar bloqueado em alguns contextos */ }
+}
+
 async function safeQuery(promise, fallback = null) {
   try {
     const { data, error } = await promise;
     if (error) {
-      console.warn('Supabase warning:', error.message || error);
+      // Token expirado: tenta refresh automático
+      if (error.message?.includes('JWT') || error.code === 'PGRST301' || error.status === 401) {
+        console.warn('[Auth] Token expirado — tentando refresh automático...');
+        await autoRefreshToken();
+      } else {
+        console.warn('Supabase warning:', error.message || error);
+      }
       return fallback;
     }
     return data ?? fallback;
@@ -14,16 +34,41 @@ async function safeQuery(promise, fallback = null) {
   }
 }
 
+// Refresh automático chamado quando token expira durante uma query
+async function autoRefreshToken() {
+  try {
+    const refresh = localStorage.getItem('sb_refresh');
+    if (!refresh) return;
+    const res = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refresh })
+    });
+    const d = await res.json();
+    if (d.access_token) {
+      localStorage.setItem('sb_token', d.access_token);
+      localStorage.setItem('sb_refresh', d.refresh_token);
+      syncAuthToken();
+      console.info('[Auth] Token renovado automaticamente');
+    }
+  } catch (e) {
+    console.warn('[Auth] Falha no refresh automático:', e.message);
+  }
+}
+
 export async function dbLoad() {
+  syncAuthToken();
   const data = await safeQuery(supabase.from('portal_data').select('*').eq('id', 1).single(), {});
   return data || {};
 }
 
 export async function dbSave(portalData) {
+  syncAuthToken();
   await safeQuery(supabase.from('portal_data').upsert({ id: 1, data: portalData, updated_at: new Date().toISOString() }), null);
 }
 
 export async function dbLoadStatuses() {
+  syncAuthToken();
   const data = await safeQuery(supabase.from('portal_statuses').select('*'), []);
   const map = {};
   (data || []).forEach(r => { map[r.key] = r.status; });
@@ -31,18 +76,22 @@ export async function dbLoadStatuses() {
 }
 
 export async function dbSaveStatus(key, status) {
+  syncAuthToken();
   await safeQuery(supabase.from('portal_statuses').upsert({ key, status }), null);
 }
 
 export async function dbLoadHistory() {
+  syncAuthToken();
   return await safeQuery(supabase.from('portal_history').select('*').order('created_at', { ascending: false }), []);
 }
 
 export async function dbAddHistory(entry) {
+  syncAuthToken();
   await safeQuery(supabase.from('portal_history').insert(entry), null);
 }
 
 export async function dbLoadExtras() {
+  syncAuthToken();
   const data = await safeQuery(supabase.from('portal_extras').select('*'), []);
   const map = {};
   (data || []).forEach(r => { map[r.key] = r.value; });
@@ -50,6 +99,7 @@ export async function dbLoadExtras() {
 }
 
 export async function dbSaveExtra(key, value) {
+  syncAuthToken();
   await safeQuery(supabase.from('portal_extras').upsert({ key, value }), null);
 }
 
