@@ -38,7 +38,6 @@ function buildNav(visibleTabs, counts = {}) {
     { id: 'acompanhamento',  label: 'Em acompanhamento',  icon: icons.aging,      count: counts.acompanhamento, parent: 'devol_group' },
     { id: 'transportadores', label: 'Transportadores',    icon: icons.transportador },
     { id: 'aging',           label: 'Aging',              icon: icons.aging },
-    { id: 'historico',       label: 'Histórico',          icon: icons.historico },
     { id: 'auditoria',       label: 'Auditoria',          icon: icons.auditoria },
     { id: 'usuarios',        label: 'Usuários',           icon: icons.usuarios },
     // transportador

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { fmt, getNoteKey, getStatus, getTracking, getTransporter, getSOByValue,
-  getTKByValue, calcAging, agingCategory, checkDateMatch, fmtDateTime, deriveWorkflow } from '../utils/helpers';
+  getTKByValue, calcAging, agingCategory, checkDateMatch, deriveWorkflow } from '../utils/helpers';
 import StatusButtons from './StatusButtons';
 import ChatPanel from './ChatPanel';
 import NoteMetaPanel from './NoteMetaPanel';
@@ -27,9 +27,12 @@ function StatusDot({ color }) {
 export default function NoteDrawer({
   note, mode, onClose, statuses, extras, history, user, isTransporter,
   addChatMessage, onStatus, onTracking, onOpenEmail, onEditTransporter,
+  onSetTransporter, transporterNames = [],
   onSaveAcceptance, acceptanceData, permissions, noteMeta, saveMeta, users
 }) {
   const [activeTab, setActiveTab] = useState('info');
+  const [trSelect, setTrSelect] = useState('');
+  const [savingTr, setSavingTr] = useState(false);
 
   if (!note) return null;
 
@@ -53,7 +56,6 @@ export default function NoteDrawer({
     { id: 'info',    label: 'Detalhes' },
     { id: 'actions', label: 'Ações' },
     { id: 'chat',    label: `Chat${chat.length > 0 ? ` (${chat.length})` : ''}` },
-    { id: 'hist',    label: `Histórico${noteHist.length > 0 ? ` (${noteHist.length})` : ''}` },
     ...(!isTransporter ? [{ id: 'meta', label: 'Gestão' }] : []),
   ];
 
@@ -246,8 +248,47 @@ export default function NoteDrawer({
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{meta.proxima_acao || processInfo.nextAction}</div>
               </div>
 
+              {/* ── VERIFICAÇÃO: Transportador obrigatório ── */}
+              {!tr && (
+                <div style={{ background: 'var(--yellow-dim)', border: '1px solid rgba(210,153,34,0.35)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--yellow)', marginBottom: 6 }}>
+                    ⚠ Transportador não vinculado
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.5 }}>
+                    Para alterar o status desta nota é necessário vincular um transportador primeiro.
+                  </div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
+                    Selecionar transportador
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <select
+                      value={trSelect}
+                      onChange={e => setTrSelect(e.target.value)}
+                      className="input"
+                      style={{ flex: 1, fontSize: 12 }}
+                    >
+                      <option value="">— Selecione —</option>
+                      {transporterNames.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button
+                      onClick={async () => {
+                        if (!trSelect) return;
+                        setSavingTr(true);
+                        try { await onSetTransporter(key, trSelect); setTrSelect(''); }
+                        finally { setSavingTr(false); }
+                      }}
+                      disabled={!trSelect || savingTr}
+                      className="btn btn-gold btn-sm"
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {savingTr ? 'Salvando…' : 'Vincular'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="drawer-section-title">Atualizar status</div>
-              <ProtectedAction allowed={mode === 'cobr' ? (isTransporter || permissions.canEditCobr) : permissions.canEditLanc || isTransporter}>
+              <ProtectedAction allowed={!!tr && (mode === 'cobr' ? (isTransporter || permissions.canEditCobr) : permissions.canEditLanc || isTransporter)}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                   <StatusButtons
                     mode={mode}
@@ -293,28 +334,6 @@ export default function NoteDrawer({
               userName={user?.name}
               role={isTransporter ? 'transportador' : 'interno'}
             />
-          )}
-
-          {/* ── TAB: HISTÓRICO ── */}
-          {activeTab === 'hist' && (
-            <div>
-              {noteHist.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-text">Nenhum histórico registrado.</div>
-                </div>
-              ) : (
-                noteHist.map((h, i) => (
-                  <div key={i} className="history-item">
-                    <div className="history-dot" />
-                    <div className="history-content">
-                      <div className="history-action">{h.action}: <strong>{h.status_to}</strong></div>
-                      <div className="history-meta">{fmtDateTime(h.created_at)} · {h.user_name || 'Sistema'}</div>
-                      {h.observation && <div className="history-obs">"{h.observation}"</div>}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           )}
 
           {/* ── TAB: GESTÃO ── */}

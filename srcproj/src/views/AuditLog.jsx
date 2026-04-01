@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { exportToExcel } from '../utils/excel';
-import { fmtDateTime } from '../utils/helpers';
+import { fmtDateTime, translateStatusLabel } from '../utils/helpers';
 
 export default function AuditLog({ audit = [] }) {
   const [search, setSearch] = useState('');
@@ -43,8 +43,8 @@ export default function AuditLog({ audit = [] }) {
                   </td>
                   <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--gold)', fontWeight: 500 }}>{a.acao}</td>
                   <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-3)' }}>{a.campo}</td>
-                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--red)', opacity: 0.8 }}>{a.valor_anterior || '—'}</td>
-                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>{a.valor_novo || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--red)', opacity: 0.8 }}>{translateStatusLabel(a.valor_anterior) || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>{translateStatusLabel(a.valor_novo) || '—'}</td>
                   <td style={{ padding: '9px 14px', fontSize: 10, color: 'var(--text-3)' }}>{a.origem}</td>
                 </tr>
               ))}

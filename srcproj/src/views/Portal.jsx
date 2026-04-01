@@ -9,7 +9,6 @@ import Acompanhamento from './Acompanhamento';
 import NfsDebito from './NfsDebito';
 import Transportadores from './Transportadores';
 import Aging from './Aging';
-import Historico from './Historico';
 import TransportDash from './TransportDash';
 import AuditLog from './AuditLog';
 import UsuariosAdmin from './UsuariosAdmin';
@@ -42,7 +41,6 @@ const PAGE_TITLES = {
   nfDebito:       'NFs Débito',
   transportadores:'Por Transportador',
   aging:          'Aging',
-  historico:      'Histórico',
   auditoria:      'Auditoria',
   usuarios:       'Usuários',
   tr_dash:        'Dashboard',
@@ -222,8 +220,6 @@ function Portal() {
     } else if (tab === 'acompanhamento') {
       const acompNotes = myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses)));
       exportToExcel(toExportRows(filterNotes(acompNotes, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'acompanhamento');
-    } else if (tab === 'historico') {
-      exportToExcel(history, 'historico');
     } else if (tab === 'transportadores') {
       exportToExcel(trSummary, 'transportadores');
     } else if (tab === 'aging') {
@@ -237,7 +233,7 @@ function Portal() {
     exportWorkbook({
       cobranca: toExportRows(myC, statuses, extras, 'cobr', noteMeta),
       lancamento: toExportRows(myP, statuses, extras, 'pend', noteMeta),
-      historico: history, auditoria: audit, transportadores: trSummary,
+      auditoria: audit, transportadores: trSummary,
       nfs_debito: nfGroups.flatMap(g => g.notes.map(n => ({ nfDeb: g.nfDeb, pedido: g.pedido, nfd: n.nfd, nfo: n.nfo, cliente: n.cl, valor: n.v }))),
     });
   };
@@ -279,11 +275,18 @@ function Portal() {
     setEditTransport({ open: false, note: null, value: '' });
   };
 
+  const handleSetTransporter = async (noteKey, trName) => {
+    await patchExtra(noteKey, { trOverride: trName });
+    await logAudit({ nfKey: noteKey, action: 'Transportador vinculado', field: 'transportador', oldValue: '', newValue: trName, origin: 'manual' });
+  };
+
   const commonListProps = {
     filters, setFilters, extras, statuses, selected, setSelected,
     detailTab, setDetailTab, addChatMessage, user, isTransporter, history,
     onStatus: openStatusModal, onTracking: openTrackingModal,
     onOpenEmail: openEmailForNotes, onEditTransporter: openEditTransport,
+    onSetTransporter: handleSetTransporter,
+    transporterNames: trSummary.map(t => t.name),
     acceptanceHandler, permissions, noteMeta, saveMeta, users,
     onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
     exportButton: permissions.canExport ? (
@@ -317,7 +320,6 @@ function Portal() {
         }}
       />
     );
-    if (tab === 'historico') return <Historico history={history} />;
     if (tab === 'auditoria') return <AuditLog audit={audit} />;
     if (tab === 'usuarios') return <UsuariosAdmin />;
     if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} />;

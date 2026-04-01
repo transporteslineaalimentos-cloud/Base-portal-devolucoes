@@ -10,7 +10,7 @@ export default function NoteListView({
   notes = [], mode = 'cobr', filters, setFilters, statusOptions, extras, statuses,
   selected, setSelected, detailTab, setDetailTab,
   addChatMessage, user, isTransporter, history, onStatus, onTracking, onOpenEmail,
-  onEditTransporter, acceptanceHandler, permissions, noteMeta, saveMeta, users,
+  onEditTransporter, onSetTransporter, transporterNames = [], acceptanceHandler, permissions, noteMeta, saveMeta, users,
   onBatchGenerate, onBatchEmail, onBatchStatus, exportButton
 }) {
   const [drawerNote, setDrawerNote] = useState(null);
@@ -124,6 +124,8 @@ export default function NoteListView({
           onTracking={onTracking}
           onOpenEmail={onOpenEmail}
           onEditTransporter={onEditTransporter}
+          onSetTransporter={onSetTransporter}
+          transporterNames={transporterNames}
           onSaveAcceptance={acceptanceHandler}
           acceptanceData={extras}
           permissions={permissions}

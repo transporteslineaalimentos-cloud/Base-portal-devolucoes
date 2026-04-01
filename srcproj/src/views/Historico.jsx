@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmtDateTime } from '../utils/helpers';
+import { fmtDateTime, translateStatusLabel } from '../utils/helpers';
 import { exportToExcel } from '../utils/excel';
 
 export default function Historico({ history = [] }) {
@@ -50,7 +50,7 @@ export default function Historico({ history = [] }) {
                     <td style={{ padding: '10px 14px', fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text)' }}>{p[0] || '—'}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text)' }}>{p[1] || '—'}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-2)' }}>{h.action}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--gold)' }}>{h.status_to}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--gold)' }}>{translateStatusLabel(h.status_to)}</td>
                     <td style={{ padding: '10px 14px', fontSize: 11, color: 'var(--blue)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.observation || '—'}</td>
                     <td style={{ padding: '10px 14px', fontSize: 11, color: 'var(--purple)', fontWeight: 500 }}>{h.user_name || 'Sistema'}</td>
                   </tr>

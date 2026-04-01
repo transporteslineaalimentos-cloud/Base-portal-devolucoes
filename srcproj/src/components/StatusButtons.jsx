@@ -40,7 +40,7 @@ export default function StatusButtons({ mode, isTransporter, onStatus, onTrackin
                 color: isNegative ? '#dc2626' : undefined,
               }}
             >
-              {s.l}
+              {s.la || s.l}
             </button>
           );
         })}

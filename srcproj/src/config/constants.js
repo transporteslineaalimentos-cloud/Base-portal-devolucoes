@@ -16,7 +16,7 @@ export const SO = [
   { v: 'validado',     l: 'Validada internamente',               c: '#d97706', bg: '#fffbeb',
     final: false, transp: false,
     next_internal: ['cancelada', 'cobr_tr'], next_transp: [] },
-  { v: 'cobr_tr',      l: 'Aguardando posição do transportador', c: '#7c3aed', bg: '#f5f3ff',
+  { v: 'cobr_tr',      l: 'Aguardando posição do transportador', la: 'Solicitar posição ao transportador', c: '#7c3aed', bg: '#f5f3ff',
     final: false, transp: true,
     next_internal: [],
     next_transp: ['tr_concordou', 'tr_contestou', 'tr_nao_resp'] },

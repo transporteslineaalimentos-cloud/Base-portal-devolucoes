@@ -286,3 +286,25 @@ export function buildAreaSummary(notes) {
   });
   return Object.values(map).sort((a, b) => b.value - a.value);
 }
+
+// Converte código interno de status para label legível
+// Ex: 'cobr_tr' → 'Aguardando posição do transportador'
+export function getStatusLabel(v) {
+  if (!v) return v || '';
+  // Remove prefixos st: tk: e parte de data "(dd/mm/aaaa)"
+  const clean = String(v).replace(/^(st:|tk:)/, '').split(' (')[0].trim();
+  return SO.find(s => s.v === clean)?.l
+      || TK.find(t => t.v === clean)?.l
+      || clean;
+}
+
+// Traduz código interno de status para label legível (ex: 'cobr_tr' → 'Aguardando posição do transportador')
+export function translateStatusLabel(code) {
+  if (!code) return code;
+  const raw = String(code).replace(/^(st:|tk:)/, '').trim();
+  const soMatch = SO.find(s => s.v === raw);
+  if (soMatch) return soMatch.l;
+  const tkMatch = TK.find(t => t.v === raw);
+  if (tkMatch) return tkMatch.l;
+  return code;
+}
