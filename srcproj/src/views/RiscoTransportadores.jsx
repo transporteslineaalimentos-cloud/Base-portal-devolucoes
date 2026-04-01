@@ -247,7 +247,7 @@ export default function RiscoTransportadores() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                     <XAxis type="number" domain={[0,100]} tick={{ fontSize: 9, fill: 'var(--text-3)' }} />
                     <YAxis type="category" dataKey="transportador" width={130} tick={{ fontSize: 9, fill: 'var(--text-2)' }} />
-                    <Tooltip {...tip} formatter={(v:number) => [`${v.toFixed(1)} pts`, 'Score']} />
+                    <Tooltip {...tip} formatter={v => [`${v.toFixed(1)} pts`, 'Score']} />
                     <Bar dataKey="score" radius={[0,4,4,0]}>
                       {sorted.slice(0,8).map(s => (
                         <Cell key={s.transportador} fill={NIVEL[s.nivel]?.color || '#8B949E'} />
@@ -270,7 +270,7 @@ export default function RiscoTransportadores() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                     <XAxis dataKey="data" tick={{ fontSize: 9, fill: 'var(--text-3)' }} />
                     <YAxis domain={[0,100]} tick={{ fontSize: 9, fill: 'var(--text-3)' }} width={24} />
-                    <Tooltip {...tip} formatter={(v:number) => [`${v} pts`, 'Score médio']} />
+                    <Tooltip {...tip} formatter={v => [`${v} pts`, 'Score médio']} />
                     <Line type="monotone" dataKey="score" stroke="#F85149" strokeWidth={2} dot={{ fill: '#F85149', r: 2 }} />
                   </LineChart>
                 </ResponsiveContainer>
