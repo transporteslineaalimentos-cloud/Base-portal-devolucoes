@@ -11,6 +11,7 @@ const Icon = ({ d, size = 18, className = '' }) => (
 
 const icons = {
   dashboard:     'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 3a4 4 0 100-8 4 4 0 000 8z',
+  dashboard_adv: 'M18 20V10M12 20V4M6 20v-6',
   cobranca:      'M3 11l19-9-9 19-2-8-8-2z',
   lancamento:    'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
   nfDebito:      'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zm-2 9H8m4 4H8m2-8H8',
@@ -31,7 +32,8 @@ const icons = {
 /* ── NAV CONFIG ── */
 function buildNav(visibleTabs, counts = {}) {
   const all = [
-    { id: 'dashboard',       label: 'Dashboard',         icon: icons.dashboard },
+    { id: 'dashboard',       label: 'Dashboard',              icon: icons.dashboard },
+    { id: 'dashboard_adv',   label: 'Dashboard Executivo',    icon: icons.dashboard_adv },
     { id: 'cobranca',        label: 'Cobranças',          icon: icons.cobranca,   count: counts.cobranca,   parent: 'cobr_group' },
     { id: 'nfDebito',        label: 'NFs Débito',         icon: icons.nfDebito,                             parent: 'cobr_group' },
     { id: 'lancamento',      label: 'Todas as notas',     icon: icons.lancamento, count: counts.lancamento, parent: 'devol_group' },

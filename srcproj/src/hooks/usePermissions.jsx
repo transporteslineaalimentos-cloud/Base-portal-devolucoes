@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { dbLoadProfile } from '../config/supabase';
 
 const FALLBACK = {
-  admin:             { tabs: ['dashboard','cobranca','lancamento','acompanhamento','nfDebito','transportadores','aging','auditoria','usuarios'], can_edit_cobr: true, can_edit_lanc: true, can_import: true, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
-  internal:          { tabs: ['dashboard','cobranca','lancamento','acompanhamento','nfDebito','transportadores','aging','auditoria'], can_edit_cobr: true, can_edit_lanc: true, can_import: true, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
+  admin:             { tabs: ['dashboard','dashboard_adv','cobranca','lancamento','acompanhamento','nfDebito','transportadores','aging','auditoria','usuarios'], can_edit_cobr: true, can_edit_lanc: true, can_import: true, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
+  internal:          { tabs: ['dashboard','dashboard_adv','cobranca','lancamento','acompanhamento','nfDebito','transportadores','aging','auditoria'], can_edit_cobr: true, can_edit_lanc: true, can_import: true, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
   transporte:        { tabs: ['dashboard','lancamento','acompanhamento','aging'], can_edit_cobr: false, can_edit_lanc: true, can_import: false, can_export: true, can_email: false, can_emit_nf: false, note_filter: { area: 'TRANSPORTE' } },
   controladoria:     { tabs: ['dashboard','cobranca','nfDebito'], can_edit_cobr: true, can_edit_lanc: false, can_import: false, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
   logistica_reversa: { tabs: ['dashboard','lancamento','acompanhamento','aging'], can_edit_cobr: false, can_edit_lanc: true, can_import: false, can_export: true, can_email: false, can_emit_nf: false, note_filter: { area: 'LOGÍSTICA REVERSA' } },

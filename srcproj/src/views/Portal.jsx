@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '../hooks/useAuth.jsx';
 import { DataProvider, useData } from '../hooks/useData.jsx';
 import Login from './Login';
 import Dashboard from './Dashboard';
+import DashboardAvancado from './DashboardAvancado';
 import PendCobranca from './PendCobranca';
 import PendLancamento from './PendLancamento';
 import Acompanhamento from './Acompanhamento';
@@ -34,8 +35,9 @@ import { useTheme } from '../hooks/useTheme.jsx';
 const DEFAULT_FILTERS = { search: '', area: 'TODOS', status: 'todos', transporters: [], agingCat: null };
 
 const PAGE_TITLES = {
-  dashboard:      'Dashboard',
-  cobranca:       'Gestão de Cobranças',
+  dashboard:        'Dashboard',
+  dashboard_adv:    'Dashboard Executivo',
+  cobranca:         'Gestão de Cobranças',
   lancamento:     'Todas as Devoluções',
   acompanhamento: 'Em Acompanhamento (Transportador)',
   nfDebito:       'NFs Débito',
@@ -297,7 +299,8 @@ function Portal() {
   };
 
   const renderContent = () => {
-    if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
+    if (tab === 'dashboard' && !isTransporter)     return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
+    if (tab === 'dashboard_adv' && !isTransporter) return <DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} />;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
     if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
     if (tab === 'acompanhamento') return <Acompanhamento {...commonListProps} notes={myP} />;
@@ -340,7 +343,11 @@ function Portal() {
       <Sidebar
         tab={tab}
         onChangeTab={changeTab}
-        visibleTabs={permissions.visibleTabs}
+        visibleTabs={[
+          ...permissions.visibleTabs,
+          ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv')
+            ? ['dashboard_adv'] : []),
+        ]}
         counts={{ cobranca: myC.length, lancamento: myP.length, acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length }}
         user={user}
         onLogout={logout}
