@@ -46,7 +46,8 @@ function processFiles(parcial, total, interna, nfBase) {
       cod: str(gv(r, 'PRODUTO')),
       desc: str(gv(r, 'DESCRIÇÃO', 'DESCRICAO')),
       qt: parseFloat(gv(r, 'QTD', 'QUANTIDADE')) || 0,
-      vi: parseFloat(gv(r, 'VALOR', 'VALOR ITEM NF')) || 0
+      vi: parseFloat(gv(r, 'VALOR', 'VALOR ITEM NF')) || 0,
+      vu: parseFloat(gv(r, 'VALOR UNITARIO', 'VALOR UNITÁRIO', 'VALOR UNIT', 'VL UNITARIO', 'VL UNIT')) || 0
     });
   });
 

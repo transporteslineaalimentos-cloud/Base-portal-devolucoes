@@ -49,9 +49,6 @@ export default function NoteDrawer({
   const meta = noteMeta?.[key] || {};
   const processInfo = deriveWorkflow(mode, st, meta);
 
-  // Acceptance is shown when: transporter + cobr + status requires it (emitida or tr_concordou)
-  const needsAcceptance = isTransporter && mode === 'cobr' && ['emitida', 'tr_concordou', 'cobrada'].includes(st);
-
   const tabs = [
     { id: 'info',    label: 'Detalhes' },
     { id: 'actions', label: 'Ações' },
@@ -83,11 +80,6 @@ export default function NoteDrawer({
               {acceptance?.accepted && (
                 <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid rgba(63,185,80,0.2)' }}>
                   Aceite ✓
-                </span>
-              )}
-              {acceptance?.refused && (
-                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid rgba(248,81,73,0.2)' }}>
-                  Aceite recusado
                 </span>
               )}
             </div>
@@ -207,14 +199,6 @@ export default function NoteDrawer({
                 </div>
               )}
 
-              {/* Acceptance summary (if exists, show in details tab too) */}
-              {acceptance && (acceptance.accepted || acceptance.refused) && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Aceite do transportador</div>
-                  <AcceptanceForm existing={acceptance} />
-                </div>
-              )}
-
               {/* Products */}
               {note.p?.length > 0 && (
                 <div>
@@ -226,6 +210,7 @@ export default function NoteDrawer({
                           <th>Código</th>
                           <th>Descrição</th>
                           <th style={{ textAlign: 'center' }}>Qtd</th>
+                          <th style={{ textAlign: 'right' }}>Vlr. Unit.</th>
                           <th style={{ textAlign: 'right' }}>Valor</th>
                         </tr>
                       </thead>
@@ -234,8 +219,14 @@ export default function NoteDrawer({
                           <tr key={idx}>
                             <td style={{ fontFamily: 'monospace', fontSize: 10 }}>{p.cod}</td>
                             <td style={{ fontSize: 11 }}>{p.desc}</td>
-                            <td style={{ textAlign: 'center' }}>{p.qt}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{fmt(p.vi)}</td>
+                            <td style={{ textAlign: 'center' }}>
+                              {Math.abs(p.qt)}{' '}
+                              <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 600 }}>CX</span>
+                            </td>
+                            <td style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-2)' }}>
+                              {p.vu ? fmt(Math.abs(p.vu)) : '—'}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{fmt(Math.abs(p.vi))}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -278,27 +269,16 @@ export default function NoteDrawer({
                 </div>
               )}
 
-              {/* ── ACEITE DO TRANSPORTADOR (inline, sem modal) ── */}
-              {needsAcceptance && (
+              {isTransporter && mode === 'cobr' && (
                 <div style={{ marginTop: 16 }}>
-                  <div className="drawer-section-title">Aceite formal da cobrança</div>
+                  <div className="drawer-section-title">Aceite formal</div>
                   <AcceptanceForm
+                    open={true}
+                    onClose={() => {}}
+                    onSave={(data) => onSaveAcceptance.save(key, data)}
                     existing={acceptance}
-                    onSave={async (data) => {
-                      await onSaveAcceptance.save(key, data);
-                    }}
-                    onRefuse={async (data) => {
-                      await onSaveAcceptance.save(key, data);
-                    }}
+                    inline
                   />
-                </div>
-              )}
-
-              {/* Show acceptance summary for internal users */}
-              {!isTransporter && acceptance && (acceptance.accepted || acceptance.refused) && (
-                <div style={{ marginTop: 16 }}>
-                  <div className="drawer-section-title">Aceite do transportador</div>
-                  <AcceptanceForm existing={acceptance} />
                 </div>
               )}
             </div>
