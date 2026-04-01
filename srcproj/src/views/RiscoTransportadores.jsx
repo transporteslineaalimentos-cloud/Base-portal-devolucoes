@@ -85,7 +85,7 @@ export default function RiscoTransportadores() {
 
   // Tendência do score médio geral por dia
   const trendGeral = useMemo(() => {
-    const byDate: Record<string, number[]> = {};
+    const byDate = {};
     hist.forEach(h => {
       if (!byDate[h.data]) byDate[h.data] = [];
       byDate[h.data].push(h.score);
