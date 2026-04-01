@@ -55,9 +55,9 @@ function Portal() {
   const permissions = usePermissions(user);
   const portalData = useData();
   const {
-    data, statuses, history, extras, lastUpdated, lastSource, loading,
+    data, statuses, history, extras, transportadores, lastUpdated, lastSource, loading,
     loadAll, syncFromGitHub, setNoteStatus, setNoteTracking,
-    addChatMessage, getTrEmails, setTrEmails, patchExtra
+    addChatMessage, getTrEmails, setTrEmails, saveTransportador, patchExtra
   } = portalData;
   const { noteMeta, saveMeta } = useNoteMeta();
   const { audit, logAudit } = useAudit(user);
@@ -310,6 +310,8 @@ function Portal() {
         summary={trSummary}
         getEmails={getTrEmails}
         setEmails={setTrEmails}
+        transportadores={transportadores}
+        saveTransportador={saveTransportador}
         onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
       />
     );

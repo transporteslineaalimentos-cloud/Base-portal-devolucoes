@@ -247,3 +247,30 @@ export async function adminUpdateUser(userId, payload) {
 export async function adminDeleteUser(userId) {
   return await adminUsersRequest('DELETE', { userId });
 }
+
+// ─── TRANSPORTADORES (tabela dedicada) ──────────────────────────
+export async function dbLoadTransportadores() {
+  syncAuthToken();
+  const data = await safeQuery(supabase.from('portal_transportadores').select('*').order('nome'), []);
+  return (data || []);
+}
+
+export async function dbSaveTransportador(nome, fields) {
+  syncAuthToken();
+  await safeQuery(
+    supabase.from('portal_transportadores').upsert({
+      nome, ...fields, updated_at: new Date().toISOString()
+    }),
+    null
+  );
+}
+
+export async function dbGetTransportadorEmails(nome) {
+  if (!nome) return '';
+  syncAuthToken();
+  const data = await safeQuery(
+    supabase.from('portal_transportadores').select('emails').eq('nome', nome).single(),
+    null
+  );
+  return data?.emails || '';
+}

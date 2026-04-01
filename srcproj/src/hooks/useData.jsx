@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import {
   dbLoad, dbSave, dbLoadStatuses, dbSaveStatus, dbLoadHistory, dbAddHistory,
-  dbLoadExtras, dbSaveExtra, dbGetLastGithubSignal, notifyTransporter
+  dbLoadExtras, dbSaveExtra, dbGetLastGithubSignal, notifyTransporter,
+  dbLoadTransportadores, dbSaveTransportador, dbGetTransportadorEmails
 } from '../config/supabase';
 import { GH_URL } from '../config/constants';
 import { processExcel } from '../utils/excel';
@@ -13,6 +14,7 @@ export function DataProvider({ children }) {
   const [statuses, setStatuses] = useState({});
   const [history, setHistory] = useState([]);
   const [extras, setExtras] = useState({});
+  const [transportadores, setTransportadores] = useState([]);  // nova tabela dedicada
   const [lastUpdated, setLastUpdated] = useState('');
   const [lastSource, setLastSource] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,8 +23,8 @@ export function DataProvider({ children }) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [dbData, sts, hist, ext] = await Promise.all([
-        dbLoad(), dbLoadStatuses(), dbLoadHistory(), dbLoadExtras()
+      const [dbData, sts, hist, ext, trs] = await Promise.all([
+        dbLoad(), dbLoadStatuses(), dbLoadHistory(), dbLoadExtras(), dbLoadTransportadores()
       ]);
       if (dbData?.data) {
         setData(dbData.data);
@@ -31,6 +33,7 @@ export function DataProvider({ children }) {
       setStatuses(sts || {});
       setHistory(hist || []);
       setExtras(ext || {});
+      setTransportadores(trs || []);
       loadedRef.current = true;
 
       // ── AUTO-REFRESH: detecta push do GitHub e atualiza base automaticamente ──
@@ -189,27 +192,44 @@ export function DataProvider({ children }) {
     try { return typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : v.msgs || []); } catch { return []; }
   }, [extras]);
 
+  // ── TRANSPORTADORES — nova tabela dedicada ───────────────────
+  // getTrEmails: lê da lista em memória (carregada no loadAll)
   const getTrEmails = useCallback((trName) => {
     if (!trName) return '';
+    const tr = transportadores.find(t => t.nome === trName);
+    if (tr) return tr.emails || '';
+    // fallback: extras legados (migração)
     const k = 'tr_email:' + trName;
     const v = extras[k];
     return typeof v === 'string' ? v : (v?.emails || '');
-  }, [extras]);
+  }, [transportadores, extras]);
 
+  // setTrEmails: salva na nova tabela E atualiza lista em memória
   const setTrEmails = useCallback(async (trName, emails) => {
-    const key = 'tr_email:' + trName;
-    const value = { emails };
-    const newExtras = { ...extras, [key]: value };
-    setExtras(newExtras);
-    await dbSaveExtra(key, value);
-  }, [extras]);
+    await dbSaveTransportador(trName, { emails });
+    setTransportadores(prev => {
+      const exists = prev.find(t => t.nome === trName);
+      if (exists) return prev.map(t => t.nome === trName ? { ...t, emails } : t);
+      return [...prev, { nome: trName, emails }];
+    });
+  }, []);
+
+  // saveTransportador: salva todos os campos (nome, emails, telefone, contato, obs)
+  const saveTransportador = useCallback(async (nome, fields) => {
+    await dbSaveTransportador(nome, fields);
+    setTransportadores(prev => {
+      const exists = prev.find(t => t.nome === nome);
+      if (exists) return prev.map(t => t.nome === nome ? { ...t, ...fields, nome } : t);
+      return [...prev, { nome, ...fields }];
+    });
+  }, []);
 
   return (
     <DataContext.Provider value={{
-      data, statuses, history, extras, lastUpdated, lastSource, loading,
+      data, statuses, history, extras, transportadores, lastUpdated, lastSource, loading,
       loadAll, syncFromGitHub, importExcel,
       setNoteStatus, setNoteTracking,
-      saveExtra, patchExtra, addChatMessage, getChat, getTrEmails, setTrEmails,
+      saveExtra, patchExtra, addChatMessage, getChat, getTrEmails, setTrEmails, saveTransportador,
       loaded: loadedRef.current
     }}>
       {children}
