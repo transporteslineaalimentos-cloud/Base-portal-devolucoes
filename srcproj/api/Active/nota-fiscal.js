@@ -11,6 +11,25 @@ async function sbInsert(table, payload) {
   return res.ok;
 }
 
+function g(obj, ...keys) {
+  if (!obj) return '';
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+  }
+  return '';
+}
+
+function gn(obj, ...keys) {
+  const v = g(obj, ...keys);
+  return v === '' || v === null ? 0 : Number(v) || 0;
+}
+
+function extractNFs(body) {
+  if (body && body.NotaFiscal && Array.isArray(body.NotaFiscal)) return body.NotaFiscal;
+  if (Array.isArray(body)) return body;
+  return [body];
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -19,30 +38,44 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const items = Array.isArray(req.body) ? req.body : [req.body];
+    const items = extractNFs(req.body);
     const results = [];
 
     for (const item of items) {
-      const numero = item.Numero || item.numero || '';
-      const serie = item.Serie || item.serie || '';
-      const chaveNfe = item.Chave_Eletronica?.Chave_Eletronica || '';
-      const remetente = item.Remetente || {};
-      const destinatario = item.Destinatario || {};
-      const transportador = item.Transportador || {};
-      const produtos = item.Produto_Item || [];
+      const numero = g(item, 'NUMERO', 'Numero', 'numero');
+      const serie = g(item, 'SERIE', 'Serie', 'serie');
+      const chave = g(item, 'CHAVE', 'Chave_Eletronica', 'chave_nfe') || (item.Chave_Eletronica?.Chave_Eletronica || '');
+      const transp = item.TRANSPORTADOR || item.Transportador || {};
+      const remet = item.REMETENTE || item.Remetente || {};
+      const dest = item.DESTINATARIO || item.Destinatario || {};
+
+      const emissaoRaw = g(item, 'EMISSAO', 'Data_Emissao', 'data_emissao');
+      const previsaoRaw = g(item, 'PREVISAO', 'Data_Previsao', 'data_previsao');
+      const entregaRaw = g(item, 'ENTREGA', 'Data_Entrega', 'data_entrega');
 
       await sbInsert('active_webhooks', {
-        tipo: 'nota_fiscal', source: 'active_onsupply', numero, serie, chave_nfe: chaveNfe,
-        cfop: item.CFOP || '', data_emissao: item.Data_Emissao || null,
-        data_entrega: item.Data_Entrega || null, data_previsao: item.Data_Previsao || null,
-        valor_mercadoria: item.Valor_Mercadoria || 0, peso: item.Peso || 0,
-        volumes: item.Quantidade_Volumes || 0, natureza_operacao: item.Natureza_Operacao || '',
-        pedido: item.Pedido || '', observacao: item.Observacao || '',
-        remetente_cnpj: remetente.CNPJCPF || '', remetente_nome: remetente.RazaoSocial || '',
-        destinatario_cnpj: destinatario.CNPJCPF || '', destinatario_nome: destinatario.RazaoSocial || '',
-        transportador_cnpj: transportador.CNPJCPF || '', transportador_nome: transportador.RazaoSocial || '',
-        produtos: JSON.stringify(produtos), payload_raw: JSON.stringify(item),
-        created_at: new Date().toISOString(),
+        tipo: 'nota_fiscal',
+        source: 'active_onsupply',
+        numero,
+        serie,
+        chave_nfe: chave,
+        cfop: g(item, 'CFOP', 'cfop'),
+        data_emissao: emissaoRaw || null,
+        data_previsao: previsaoRaw || null,
+        data_entrega: entregaRaw || null,
+        valor_mercadoria: gn(item, 'VALOR', 'Valor_Mercadoria', 'valor_mercadoria'),
+        peso: gn(item, 'PESO', 'Peso', 'peso'),
+        volumes: parseInt(g(item, 'VOLUMES', 'Quantidade_Volumes', 'volumes')) || 0,
+        natureza_operacao: g(item, 'OPERACAO_FISCAL', 'Natureza_Operacao', 'natureza_operacao'),
+        pedido: g(item, 'PEDIDO', 'Pedido', 'pedido'),
+        transportador_cnpj: g(transp, 'CNPJCPF', 'CnpjCpf', 'cnpjcpf'),
+        transportador_nome: g(transp, 'RAZAOSOCIAL', 'RazaoSocial', 'razaosocial', 'FANTASIA'),
+        remetente_cnpj: g(remet, 'CNPJCPF', 'CnpjCpf', 'cnpjcpf'),
+        remetente_nome: g(remet, 'RAZAOSOCIAL', 'RazaoSocial', 'razaosocial', 'FANTASIA'),
+        destinatario_cnpj: g(dest, 'CNPJCPF', 'CnpjCpf', 'cnpjcpf'),
+        destinatario_nome: g(dest, 'RAZAOSOCIAL', 'RazaoSocial', 'razaosocial', 'FANTASIA'),
+        observacao: g(item, 'Observacao', 'observacao', 'CENTRO_CUSTO'),
+        payload_raw: item,
       });
       results.push({ numero, status: 'ok' });
     }
@@ -59,7 +92,7 @@ export default async function handler(req, res) {
       Erro: false, Informacao_Complementar: {},
     })));
   } catch (err) {
-    try { await sbInsert('active_webhooks', { tipo: 'nota_fiscal_erro', source: 'active_onsupply', payload_raw: JSON.stringify(req.body || 'empty'), observacao: err.message, created_at: new Date().toISOString() }); } catch {}
+    try { await sbInsert('active_webhooks', { tipo: 'nota_fiscal_erro', source: 'active_onsupply', payload_raw: req.body || "empty", observacao: err.message }); } catch {}
     return res.status(200).json([{ Guid_Processamento: `error-${Date.now()}`, Chave_Cliente: 'LINEA_PORTAL', Inicio_Processamento: new Date().toISOString(), Termino_Processamento: new Date().toISOString(), Tempo_Processamento: '00:00:00.000', Codigo: '999', Mensagem: `Erro: ${err.message}`, Linha: 1, Tipo_Documento: 'Nota Fiscal', Referencia: '', Campo_Relacionado: '', Erro: true, Informacao_Complementar: {} }]);
   }
 }
