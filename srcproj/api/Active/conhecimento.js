@@ -25,8 +25,9 @@ function gn(obj, ...keys) {
 }
 
 function extractCTes(body) {
+  /* Active sends: { "CTe": [ {...}, ... ] } */
+  if (body && body.CTe && Array.isArray(body.CTe)) return body.CTe;
   if (body && body.Conhecimento && Array.isArray(body.Conhecimento)) return body.Conhecimento;
-  if (body && body.ConhecimentoTransporte && Array.isArray(body.ConhecimentoTransporte)) return body.ConhecimentoTransporte;
   if (Array.isArray(body)) return body;
   return [body];
 }
@@ -43,19 +44,27 @@ export default async function handler(req, res) {
     const results = [];
 
     for (const item of items) {
-      const numero = g(item, 'NUMERO', 'Numero', 'numero');
-      const serie = g(item, 'SERIE', 'Serie', 'serie');
-      const chave = g(item, 'CHAVE', 'Chave_Eletronica', 'chave_nfe') || (item.Chave_Eletronica?.Chave_Eletronica || '');
-      const transp = item.TRANSPORTADOR || item.Transportador || {};
-      const remet = item.REMETENTE || item.Remetente || {};
-      const dest = item.DESTINATARIO || item.Destinatario || {};
-      const frete = item.FRETE || item.Frete || {};
-      const imposto = item.IMPOSTO || item.Imposto || {};
-      const notasFiscais = item.NOTA_FISCAL || item.Nota_Fiscal || item.NOTAS_VINCULADAS || [];
+      /* Active CTe structure:
+         DOCUMENTO: { NUMERO, SERIE, CHAVE, EMISSAO, OBSERVACAO }
+         PRESTACAO: { CFOP, TOTAL_FRETE, VALOR_PRESTACAO, IMPOSTO: { BASE, VALOR, ALIQUOTA } }
+         CARGA: { PESO, VOLUMES, VALOR, KM, M3 }
+         TRANSPORTADOR, REMETENTE, DESTINATARIO, PAGADOR
+         NOTAFISCAL: [ { NUMERO, SERIE, CHAVE, VALOR, PESO, VOLUMES } ]
+      */
+      const doc = item.DOCUMENTO || {};
+      const prest = item.PRESTACAO || {};
+      const carga = item.CARGA || {};
+      const imp = prest.IMPOSTO || {};
+      const transp = item.TRANSPORTADOR || {};
+      const remet = item.REMETENTE || {};
+      const dest = item.DESTINATARIO || {};
+      const nfs = item.NOTAFISCAL || [];
 
-      const emissaoRaw = g(item, 'EMISSAO', 'Data_Emissao', 'data_emissao');
-      const previsaoRaw = g(item, 'PREVISAO', 'Data_Previsao', 'data_previsao');
-      const entregaRaw = g(item, 'ENTREGA', 'Data_Entrega', 'data_entrega');
+      const numero = g(doc, 'NUMERO') || g(item, 'NUMERO', 'Numero', 'numero');
+      const serie = g(doc, 'SERIE') || g(item, 'SERIE', 'Serie', 'serie');
+      const chave = g(doc, 'CHAVE') || g(item, 'CHAVE', 'Chave_Eletronica', 'chave_nfe');
+      const emissao = g(doc, 'EMISSAO') || g(item, 'EMISSAO', 'Data_Emissao');
+      const obs = g(doc, 'OBSERVACAO') || g(item, 'Observacao', 'observacao');
 
       await sbInsert('active_webhooks', {
         tipo: 'conhecimento',
@@ -63,28 +72,24 @@ export default async function handler(req, res) {
         numero,
         serie,
         chave_nfe: chave,
-        cfop: g(item, 'CFOP', 'cfop'),
-        data_emissao: emissaoRaw || null,
-        data_previsao: previsaoRaw || null,
-        data_entrega: entregaRaw || null,
-        valor_mercadoria: gn(item, 'VALOR', 'Valor_Mercadoria', 'valor_mercadoria'),
-        peso: gn(item, 'PESO', 'Peso', 'peso'),
-        observacao: g(item, 'Observacao', 'observacao', 'CENTRO_CUSTO'),
-        valor_frete_total: gn(frete, 'VALOR_TOTAL', 'Valor_Total', 'valor_total') || gn(item, 'VALOR_FRETE', 'FRETE_TOTAL'),
-        valor_frete: gn(frete, 'VALOR_FRETE', 'Valor_Frete', 'valor_frete'),
-        valor_pedagio: gn(frete, 'VALOR_PEDAGIO', 'Valor_Pedagio', 'valor_pedagio'),
-        valor_seguro: gn(frete, 'VALOR_SEGURO', 'Valor_Seguro', 'valor_seguro'),
-        valor_gris: gn(frete, 'VALOR_GRIS', 'Valor_Gris', 'valor_gris'),
-        valor_outros: gn(frete, 'VALOR_OUTROS', 'Valor_Outros', 'valor_outros'),
-        imposto_valor: gn(imposto, 'VALOR_TOTAL', 'Valor_Total', 'valor_total'),
-        imposto_aliquota: gn(imposto, 'ALIQUOTA', 'Aliquota', 'aliquota'),
-        transportador_cnpj: g(transp, 'CNPJCPF', 'CnpjCpf', 'cnpjcpf'),
-        transportador_nome: g(transp, 'RAZAOSOCIAL', 'RazaoSocial', 'razaosocial', 'FANTASIA'),
-        remetente_cnpj: g(remet, 'CNPJCPF', 'CnpjCpf', 'cnpjcpf'),
-        remetente_nome: g(remet, 'RAZAOSOCIAL', 'RazaoSocial', 'razaosocial', 'FANTASIA'),
-        destinatario_cnpj: g(dest, 'CNPJCPF', 'CnpjCpf', 'cnpjcpf'),
-        destinatario_nome: g(dest, 'RAZAOSOCIAL', 'RazaoSocial', 'razaosocial', 'FANTASIA'),
-        notas_vinculadas: JSON.stringify(notasFiscais),
+        cfop: g(prest, 'CFOP') || g(item, 'CFOP', 'cfop'),
+        data_emissao: emissao || null,
+        data_entrega: g(item, 'ENTREGA', 'Data_Entrega') || null,
+        valor_mercadoria: gn(carga, 'VALOR') || gn(item, 'VALOR', 'Valor_Mercadoria'),
+        peso: gn(carga, 'PESO') || gn(item, 'PESO', 'Peso'),
+        volumes: parseInt(g(carga, 'VOLUMES') || g(item, 'VOLUMES')) || 0,
+        observacao: obs,
+        valor_frete_total: gn(prest, 'TOTAL_FRETE', 'VALOR_PRESTACAO') || gn(item, 'VALOR_FRETE'),
+        valor_frete: gn(prest, 'TOTAL_FRETE', 'VALOR_PRESTACAO'),
+        imposto_valor: gn(imp, 'VALOR', 'Valor_Total'),
+        imposto_aliquota: gn(imp, 'ALIQUOTA', 'Aliquota'),
+        transportador_cnpj: g(transp, 'CNPJCPF'),
+        transportador_nome: g(transp, 'RAZAOSOCIAL', 'FANTASIA'),
+        remetente_cnpj: g(remet, 'CNPJCPF'),
+        remetente_nome: g(remet, 'RAZAOSOCIAL', 'FANTASIA'),
+        destinatario_cnpj: g(dest, 'CNPJCPF'),
+        destinatario_nome: g(dest, 'RAZAOSOCIAL', 'FANTASIA'),
+        notas_vinculadas: nfs.length > 0 ? nfs : null,
         payload_raw: item,
       });
       results.push({ numero, status: 'ok' });
@@ -102,7 +107,7 @@ export default async function handler(req, res) {
       Erro: false, Informacao_Complementar: {},
     })));
   } catch (err) {
-    try { await sbInsert('active_webhooks', { tipo: 'conhecimento_erro', source: 'active_onsupply', payload_raw: req.body || "empty", observacao: err.message }); } catch {}
+    try { await sbInsert('active_webhooks', { tipo: 'conhecimento_erro', source: 'active_onsupply', payload_raw: req.body || 'empty', observacao: err.message }); } catch {}
     return res.status(200).json([{ Guid_Processamento: `error-${Date.now()}`, Chave_Cliente: 'LINEA_PORTAL', Inicio_Processamento: new Date().toISOString(), Termino_Processamento: new Date().toISOString(), Tempo_Processamento: '00:00:00.000', Codigo: '999', Mensagem: `Erro: ${err.message}`, Linha: 1, Tipo_Documento: 'Conhecimento de Transporte', Referencia: '', Campo_Relacionado: '', Erro: true, Informacao_Complementar: {} }]);
   }
 }
