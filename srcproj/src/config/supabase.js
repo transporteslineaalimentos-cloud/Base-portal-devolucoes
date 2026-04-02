@@ -324,3 +324,24 @@ export async function dbGetTransportadorEmails(nome) {
   );
   return data?.emails || '';
 }
+
+// ─── ACTIVE ONSUPPLY — CT-e vinculado a uma nota ────────────────
+export async function dbGetCteForNote(nfKey) {
+  syncAuthToken();
+  const data = await safeQuery(
+    supabase.from('portal_extras').select('value').eq('key', 'cte:' + nfKey).single(),
+    null
+  );
+  return data?.value || null;
+}
+
+export async function dbLoadCtesRecentes(limit = 50) {
+  syncAuthToken();
+  return await safeQuery(
+    supabase.from('portal_cte_links')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    []
+  );
+}

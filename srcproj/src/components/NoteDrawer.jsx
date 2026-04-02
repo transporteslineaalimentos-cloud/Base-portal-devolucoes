@@ -4,6 +4,7 @@ import { fmt, getNoteKey, getStatus, getTracking, getTransporter, getSOByValue,
 import StatusButtons from './StatusButtons';
 import ChatPanel from './ChatPanel';
 import NoteTimeline from './NoteTimeline';
+import CtePanel from './CtePanel';
 import NoteMetaPanel from './NoteMetaPanel';
 import AcceptanceForm from './AcceptanceForm';
 import ProtectedAction from './ProtectedAction';
@@ -57,6 +58,7 @@ export default function NoteDrawer({
     { id: 'info',     label: 'Detalhes' },
     { id: 'actions',  label: 'Ações' },
     { id: 'timeline', label: `Linha do tempo${noteHist.length > 0 ? ` (${noteHist.length})` : ''}` },
+    { id: 'cte',      label: 'CT-e' },
     { id: 'chat',     label: `Chat${chat.length > 0 ? ` (${chat.length})` : ''}` },
     ...(!isTransporter ? [{ id: 'meta', label: 'Gestão' }] : []),
   ];
@@ -324,6 +326,13 @@ export default function NoteDrawer({
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── TAB: CT-e ACTIVE ONSUPPLY ── */}
+          {activeTab === 'cte' && (
+            <div style={{ padding: '0 4px' }}>
+              <CtePanel noteKey={key} extras={extras} />
             </div>
           )}
 
