@@ -52,8 +52,6 @@ function buildNav(visibleTabs, counts = {}) {
     { id: 'usuarios',        label: 'Usuários',            icon: icons.usuarios },
     // Transportador
     { id: 'tr_dash',         label: 'Dashboard',           icon: icons.dashboard },
-    { id: 'tr_retorno',      label: 'Devoluções',          icon: icons.lancamento,    count: counts.lancamento },
-    { id: 'tr_cobranca',     label: 'Cobranças',           icon: icons.cobranca,      count: counts.cobranca },
   ];
   return all.filter(i => visibleTabs.includes(i.id));
 }

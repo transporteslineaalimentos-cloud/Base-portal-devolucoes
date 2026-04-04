@@ -13,6 +13,7 @@ import Aging from './Aging';
 import TransportDash from './TransportDash';
 import AuditLog from './AuditLog';
 import UsuariosAdmin from './UsuariosAdmin';
+import NoteDrawer from '../components/NoteDrawer';
 import StatusModal from '../components/StatusModal';
 import EmailModal from '../components/EmailModal';
 import NotificationBell from '../components/NotificationBell';
@@ -46,8 +47,6 @@ const PAGE_TITLES = {
   auditoria:      'Auditoria',
   usuarios:       'Usuários',
   tr_dash:        'Dashboard',
-  tr_retorno:     'Devoluções',
-  tr_cobranca:    'Cobranças',
 };
 
 function Portal() {
@@ -78,7 +77,10 @@ function Portal() {
   const [batchStatusOpen, setBatchStatusOpen] = useState(false);
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
   // Chave de nota a ser aberta programaticamente (via clique em notificação)
-  const [pendingNoteOpen, setPendingNoteOpen] = useState(null); // { key, tab }
+  const [pendingNoteOpen, setPendingNoteOpen] = useState(null);
+  // Drawer global do transportador
+  const [trDrawerNote, setTrDrawerNote] = useState(null);
+  const [trDrawerMode, setTrDrawerMode] = useState('pend');
 
   useEffect(() => {
     loadAll();
@@ -228,9 +230,9 @@ function Portal() {
   };
 
   const exportCurrentView = () => {
-    if (tab === 'cobranca' || tab === 'tr_cobranca') {
+    if (tab === 'cobranca') {
       exportToExcel(toExportRows(filterNotes(myC, filters, statuses, 'cobr', extras), statuses, extras, 'cobr', noteMeta), 'cobranca');
-    } else if (tab === 'lancamento' || tab === 'tr_retorno') {
+    } else if (tab === 'lancamento') {
       exportToExcel(toExportRows(filterNotes(myP, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'lancamento');
     } else if (tab === 'acompanhamento') {
       const acompNotes = myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses)));
@@ -362,9 +364,21 @@ function Portal() {
     );
     if (tab === 'auditoria') return <AuditLog audit={audit} />;
     if (tab === 'usuarios') return <UsuariosAdmin />;
-    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} onOpenNote={(n) => { setDrawerNote(n); setDrawerMode(n.t === 'P' ? 'pend' : 'cobr'); }} />;
-    if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={myP} />;
-    if (tab === 'tr_cobranca' && isTransporter) return <PendCobranca {...commonListProps} notes={myC} />;
+    if (tab === 'tr_dash' && isTransporter) return (
+      <TransportDash
+        myC={myC} myP={myP} statuses={statuses}
+        transporterName={transporterName}
+        extras={extras} history={history} user={user}
+        addChatMessage={addChatMessage}
+        onStatus={openStatusModal} onTracking={openTrackingModal}
+        onOpenEmail={openEmailForNotes}
+        onSetTransporter={handleSetTransporter}
+        transporterNames={trSummary.map(t => t.name)}
+        acceptanceHandler={acceptanceHandler}
+        permissions={permissions}
+        noteMeta={noteMeta} saveMeta={saveMeta} users={users}
+      />
+    );
     return null;
   };
 

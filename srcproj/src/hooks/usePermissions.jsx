@@ -8,7 +8,7 @@ const FALLBACK = {
   controladoria:     { tabs: ['dashboard','cobranca','nfDebito'], can_edit_cobr: true, can_edit_lanc: false, can_import: false, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
   logistica_reversa: { tabs: ['dashboard','lancamento','acompanhamento','aging'], can_edit_cobr: false, can_edit_lanc: true, can_import: false, can_export: true, can_email: false, can_emit_nf: false, note_filter: { area: 'LOGÍSTICA REVERSA' } },
   comercial:         { tabs: ['dashboard'], can_edit_cobr: false, can_edit_lanc: false, can_import: false, can_export: true, can_email: false, can_emit_nf: false, note_filter: null },
-  transportador:     { tabs: ['tr_dash','tr_retorno','tr_cobranca'], can_edit_cobr: false, can_edit_lanc: false, can_import: false, can_export: false, can_email: false, can_emit_nf: false, note_filter: null }
+  transportador:     { tabs: ['tr_dash'], can_edit_cobr: false, can_edit_lanc: false, can_import: false, can_export: false, can_email: false, can_emit_nf: false, note_filter: null }
 };
 
 export function usePermissions(user) {

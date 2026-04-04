@@ -1,170 +1,392 @@
-import { useMemo } from 'react';
-import { fmt, isLancActive, getStatus, calcAging } from '../utils/helpers';
+import { useMemo, useState } from 'react';
+import { fmt, getStatus, getTracking, calcAging, getNoteKey } from '../utils/helpers';
 import { TK, SO } from '../config/constants';
+import NoteDrawer from '../components/NoteDrawer';
 
-const URGENTE_AGING = 15;
+const tkLabel = (v) => TK.find(t => t.v === v)?.l || v;
 
-function Avatar({ name, size = 40 }) {
-  const ini = (name || '').trim().split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase() || '?';
+function agingColor(d) {
+  if (d >= 30) return '#E53E3E';
+  if (d >= 20) return '#D29922';
+  return '#3FB950';
+}
+
+// ── Card de nota — design limpo e focado ──────────────────────────────────────
+function NoteCard({ note, action, actionColor = 'var(--gold)', onOpen }) {
+  const aging = calcAging(note) || 0;
+  const ac = agingColor(aging);
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: 'var(--gold-dim)', border: '2px solid rgba(166,139,92,0.3)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.35, fontWeight: 700, color: 'var(--gold)', flexShrink: 0,
-    }}>{ini}</div>
+    <button
+      onClick={() => onOpen?.(note)}
+      style={{
+        width: '100%', textAlign: 'left', border: 'none', background: 'var(--surface)',
+        borderRadius: 12, padding: '16px 18px', cursor: 'pointer',
+        borderLeft: `4px solid ${actionColor}`,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        transition: 'transform 100ms, box-shadow 100ms',
+        marginBottom: 10,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'; }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        {/* Aging badge */}
+        <div style={{ flexShrink: 0, textAlign: 'center', background: `${ac}15`, border: `1px solid ${ac}30`, borderRadius: 10, padding: '8px 12px', minWidth: 52 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: ac, lineHeight: 1 }}>{aging}</div>
+          <div style={{ fontSize: 9, color: ac, fontWeight: 700, marginTop: 1, textTransform: 'uppercase' }}>dias</div>
+        </div>
+
+        {/* Info principal */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>NF {note.nfd || '—'}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{note.nfo}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: actionColor, background: `${actionColor}18`, padding: '1px 8px', borderRadius: 5 }}>
+              {fmt(note.v || 0)}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {note.cl || 'Cliente'}
+          </div>
+          {/* O que fazer — instrução clara */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: actionColor, background: `${actionColor}12`, padding: '4px 10px', borderRadius: 6 }}>
+            <span style={{ fontSize: 13 }}>→</span> {action}
+          </div>
+        </div>
+
+        {/* Chevron */}
+        <span style={{ color: 'var(--text-3)', fontSize: 18, alignSelf: 'center' }}>›</span>
+      </div>
+    </button>
   );
 }
 
-function UrgBadge({ count }) {
-  if (!count) return null;
+function EmptyState({ icon, title, sub }) {
   return (
-    <span style={{ background: '#F85149', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '2px 7px', marginLeft: 6 }}>{count}</span>
+    <div style={{ padding: '56px 20px', textAlign: 'center' }}>
+      <div style={{ fontSize: 44, marginBottom: 12 }}>{icon}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-3)', maxWidth: 260, margin: '0 auto', lineHeight: 1.7 }}>{sub}</div>
+    </div>
   );
 }
 
-export default function TransportDash({ myC = [], myP = [], statuses = {}, onOpenTab, onOpenNote, transporterName }) {
-  const stats = useMemo(() => {
-    const pAct    = myP.filter(d => isLancActive(d, statuses));
-    const cPend   = myC.filter(d => getStatus(d, statuses) === 'cobr_tr');
-    const urgP    = pAct.filter(d => (calcAging(d) || 0) >= URGENTE_AGING);
-    const urgC    = cPend.filter(d => (calcAging(d) || 0) >= URGENTE_AGING);
-    const totalV  = [...myC, ...myP].reduce((s,d) => s + (d.v||0), 0);
-    return { pAct, cPend, urgP, urgC, totalV };
+// ── Tabs de navegação ─────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'urgente',    emoji: '🔴', label: 'Urgente',        desc: 'Aguardando sua resposta' },
+  { id: 'andamento',  emoji: '🔵', label: 'Em andamento',   desc: 'Para atualizar o status' },
+  { id: 'agendado',   emoji: '📅', label: 'Agendado',       desc: 'Pendente marcar entregue' },
+  { id: 'aging',      emoji: '⚠️', label: 'Perto do limite',desc: 'Aging alto — atenção' },
+  { id: 'cobrancas',  emoji: '📋', label: 'Cobranças',      desc: 'Posição aguardada' },
+];
+
+// ── Principal ─────────────────────────────────────────────────────────────────
+export default function TransportDash({
+  myC = [], myP = [], statuses = {}, transporterName,
+  // Props do Portal necessárias para abrir o NoteDrawer
+  extras = {}, history = [], user = {}, addChatMessage,
+  onStatus, onTracking, onOpenEmail, onSetTransporter,
+  transporterNames = [], acceptanceHandler, permissions,
+  noteMeta = {}, saveMeta, users = [],
+}) {
+  const [activeTab, setActiveTab] = useState('urgente');
+  const [drawerNote, setDrawerNote] = useState(null);
+  const [drawerMode, setDrawerMode] = useState('pend');
+
+  const getT = (n) => getTracking(n, statuses) || '';
+  const getS = (n) => getStatus(n, statuses) || '';
+
+  const calc = useMemo(() => {
+    // Urgente: cobranças esperando posição + notas sem início ou que perderam agenda
+    const urgente_cobr  = myC.filter(n => getS(n) === 'cobr_tr');
+    const urgente_devol = myP.filter(n => ['retorno_auto', 'perdeu_agenda'].includes(getT(n)));
+
+    // Em andamento: notas que o transportador precisa atualizar status
+    const andamento = myP.filter(n =>
+      ['ag_consolidacao', 'em_transito', 'recebida_filial', 'agend_solicitado'].includes(getT(n))
+    );
+
+    // Agendado: confirmado mas ainda não entregue
+    const agendado = myP.filter(n =>
+      ['agend_confirmado', 'agendado'].includes(getT(n))
+    );
+
+    // Aging alto: qualquer nota ativa com 20+ dias
+    const FINAL = ['entregue', 'encaminhar', 'ret_nao_auto', 'extravio'];
+    const aging_alto = myP
+      .filter(n => !FINAL.includes(getT(n)) && (calcAging(n) || 0) >= 20)
+      .sort((a, b) => (calcAging(b) || 0) - (calcAging(a) || 0));
+
+    // Cobranças (duplicado para a aba dedicada)
+    const cobr_pos = myC.filter(n => getS(n) === 'cobr_tr');
+
+    return { urgente_cobr, urgente_devol, andamento, agendado, aging_alto, cobr_pos };
   }, [myC, myP, statuses]);
 
-  const pendActions = useMemo(() => {
-    const items = [];
-    stats.cPend.forEach(n => {
-      items.push({ type: 'cobr', note: n, aging: calcAging(n) || 0, label: 'Aguardando sua posição', color: '#D29922', icon: '📋' });
-    });
-    stats.pAct.forEach(n => {
-      const st = getStatus(n, statuses) || '';
-      const tk = TK.find(t => t.v === st);
-      if (tk?.transp) items.push({ type: 'pend', note: n, aging: calcAging(n) || 0, label: tk.l, color: '#58A6FF', icon: '📦' });
-    });
-    return items.sort((a, b) => b.aging - a.aging).slice(0, 15);
-  }, [stats, statuses]);
+  const counts = {
+    urgente:   calc.urgente_cobr.length + calc.urgente_devol.length,
+    andamento: calc.andamento.length,
+    agendado:  calc.agendado.length,
+    aging:     calc.aging_alto.length,
+    cobrancas: calc.cobr_pos.length,
+  };
+
+  const openNote = (note, mode = 'pend') => {
+    setDrawerNote(note);
+    setDrawerMode(mode);
+  };
+
+  // Instrução por status
+  const acoesDevol = {
+    retorno_auto:     'Clique para iniciar o processo de devolução',
+    perdeu_agenda:    'Clique para solicitar novo agendamento',
+    ag_consolidacao:  'Clique quando a carga sair em trânsito',
+    em_transito:      'Clique para informar chegada na filial',
+    recebida_filial:  'Clique para solicitar agendamento com o cliente',
+    agend_solicitado: 'Clique quando o agendamento for confirmado',
+    agend_confirmado: 'Clique para marcar como entregue',
+    agendado:         'Clique para marcar como entregue',
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+
+      case 'urgente':
+        if (counts.urgente === 0) {
+          return <EmptyState icon="✅" title="Nenhuma ação urgente" sub="Você está em dia. Nenhum item aguardando sua resposta agora." />;
+        }
+        return (
+          <div>
+            {calc.urgente_cobr.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#D29922', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, marginTop: 4 }}>
+                  Cobranças aguardando sua posição ({calc.urgente_cobr.length})
+                </div>
+                {calc.urgente_cobr.map((n, i) => (
+                  <NoteCard key={i} note={n} actionColor="#D29922"
+                    action="Abrir → concordo / contesto / não responsável"
+                    onOpen={n => openNote(n, 'cobr')}
+                  />
+                ))}
+              </>
+            )}
+            {calc.urgente_devol.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#E53E3E', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, marginTop: calc.urgente_cobr.length > 0 ? 16 : 4 }}>
+                  Devoluções aguardando ação ({calc.urgente_devol.length})
+                </div>
+                {calc.urgente_devol.map((n, i) => (
+                  <NoteCard key={i} note={n} actionColor="#E53E3E"
+                    action={acoesDevol[getT(n)] || 'Clique para atualizar'}
+                    onOpen={n => openNote(n, 'pend')}
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        );
+
+      case 'andamento':
+        if (counts.andamento === 0) {
+          return <EmptyState icon="🎯" title="Tudo atualizado" sub="Não há notas aguardando atualização de status agora." />;
+        }
+        return (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#58A6FF', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, marginTop: 4 }}>
+              Notas para atualizar ({counts.andamento}) — ordenadas por aging
+            </div>
+            {calc.andamento
+              .sort((a, b) => (calcAging(b) || 0) - (calcAging(a) || 0))
+              .map((n, i) => (
+                <NoteCard key={i} note={n} actionColor="#58A6FF"
+                  action={acoesDevol[getT(n)] || 'Atualizar status'}
+                  onOpen={n => openNote(n, 'pend')}
+                />
+              ))}
+          </div>
+        );
+
+      case 'agendado':
+        if (counts.agendado === 0) {
+          return <EmptyState icon="📅" title="Nenhum agendamento pendente" sub="Todos os agendamentos já foram finalizados como entregue." />;
+        }
+        return (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, marginTop: 4 }}>
+              Agendamentos confirmados — marcar entregue ao realizar ({counts.agendado})
+            </div>
+            {calc.agendado
+              .sort((a, b) => (calcAging(b) || 0) - (calcAging(a) || 0))
+              .map((n, i) => (
+                <NoteCard key={i} note={n} actionColor="#0d9488"
+                  action="Clique para marcar como entregue com a data real"
+                  onOpen={n => openNote(n, 'pend')}
+                />
+              ))}
+          </div>
+        );
+
+      case 'aging':
+        if (counts.aging === 0) {
+          return <EmptyState icon="👍" title="Sem notas com aging crítico" sub="Nenhuma nota ativa tem mais de 20 dias em aberto." />;
+        }
+        return (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#D29922', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, marginTop: 4 }}>
+              Notas com aging alto — atenção ({counts.aging})
+            </div>
+            {calc.aging_alto.map((n, i) => {
+              const d = calcAging(n) || 0;
+              const c = agingColor(d);
+              return (
+                <NoteCard key={i} note={n} actionColor={c}
+                  action={`${d} dias em aberto — ${acoesDevol[getT(n)] || 'Atualizar para evitar penalidades'}`}
+                  onOpen={n => openNote(n, 'pend')}
+                />
+              );
+            })}
+          </div>
+        );
+
+      case 'cobrancas':
+        if (counts.cobrancas === 0) {
+          return <EmptyState icon="💚" title="Nenhuma cobrança pendente" sub="Você não tem cobranças aguardando posição no momento." />;
+        }
+        return (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#D29922', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, marginTop: 4 }}>
+              Cobranças aguardando sua posição ({counts.cobrancas})
+            </div>
+            {calc.cobr_pos.map((n, i) => (
+              <NoteCard key={i} note={n} actionColor="#D29922"
+                action="Abrir → concordo / contesto / não responsável"
+                onOpen={n => openNote(n, 'cobr')}
+              />
+            ))}
+          </div>
+        );
+
+      default: return null;
+    }
+  };
+
+  const totalUrgente = counts.urgente;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 780, margin: '0 auto' }}>
 
-      {/* Boas-vindas */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '18px 22px' }}>
-        <Avatar name={transporterName} size={52} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Portal exclusivo</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{transporterName}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}</div>
+        {/* Cabeçalho compacto */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--gold-dim)', border: '2px solid rgba(166,139,92,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'var(--gold)', flexShrink: 0 }}>
+            {(transporterName || '?').trim().split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase()}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Portal do transportador</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{transporterName}</div>
+          </div>
+          {/* Resumo rápido de contadores */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {totalUrgente > 0 && (
+              <div style={{ background: 'rgba(229,62,62,0.1)', border: '1px solid rgba(229,62,62,0.2)', borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#E53E3E', lineHeight: 1 }}>{totalUrgente}</div>
+                <div style={{ fontSize: 9, color: '#E53E3E', fontWeight: 600, marginTop: 2 }}>URGENTE</div>
+              </div>
+            )}
+            {counts.andamento > 0 && (
+              <div style={{ background: 'rgba(88,166,255,0.1)', border: '1px solid rgba(88,166,255,0.2)', borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#58A6FF', lineHeight: 1 }}>{counts.andamento}</div>
+                <div style={{ fontSize: 9, color: '#58A6FF', fontWeight: 600, marginTop: 2 }}>ATUALIZAR</div>
+              </div>
+            )}
+            {counts.agendado > 0 && (
+              <div style={{ background: 'rgba(13,148,136,0.1)', border: '1px solid rgba(13,148,136,0.2)', borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#0d9488', lineHeight: 1 }}>{counts.agendado}</div>
+                <div style={{ fontSize: 9, color: '#0d9488', fontWeight: 600, marginTop: 2 }}>AGENDADO</div>
+              </div>
+            )}
+          </div>
         </div>
-        {(stats.urgP.length + stats.urgC.length) > 0 && (
-          <div style={{ background: '#F8514912', border: '1px solid #F8514930', borderRadius: 10, padding: '10px 16px', textAlign: 'center', flexShrink: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#F85149' }}>{stats.urgP.length + stats.urgC.length}</div>
-            <div style={{ fontSize: 10, color: '#F85149', fontWeight: 600 }}>itens urgentes</div>
-          </div>
-        )}
-      </div>
 
-      {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
-        {[
-          { label: 'Devoluções ativas',   value: stats.pAct.length,  sub: fmt(stats.pAct.reduce((s,d)=>s+(d.v||0),0)),  color: '#58A6FF', tab: 'tr_retorno',  urg: stats.urgP.length },
-          { label: 'Cobranças aguardando',value: stats.cPend.length,  sub: fmt(stats.cPend.reduce((s,d)=>s+(d.v||0),0)), color: '#D29922',  tab: 'tr_cobranca', urg: stats.urgC.length },
-          { label: 'Total notas',          value: myC.length + myP.length, sub: fmt(stats.totalV), color: 'var(--gold)', tab: null, urg: 0 },
-        ].map(item => (
-          <button key={item.label}
-            onClick={() => item.tab && onOpenTab(item.tab)}
-            style={{ background: 'var(--surface)', border: `1px solid var(--border)`, borderLeft: `3px solid ${item.color}`, borderRadius: 12, padding: '16px 18px', textAlign: 'left', cursor: item.tab ? 'pointer' : 'default', transition: 'all 160ms' }}
-            onMouseEnter={e => item.tab && (e.currentTarget.style.background = 'var(--surface-2)')}
-            onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</div>
-              {item.urg > 0 && <UrgBadge count={item.urg} />}
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: item.color, lineHeight: 1, marginBottom: 4 }}>{item.value}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{item.sub}</div>
-            {item.tab && <div style={{ fontSize: 11, color: item.color, marginTop: 8, fontWeight: 500 }}>Ver detalhes →</div>}
-          </button>
-        ))}
-      </div>
+        {/* Instruções — sempre visíveis, simples */}
+        <div style={{ background: 'rgba(166,139,92,0.06)', border: '1px solid rgba(166,139,92,0.15)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--text-2)', lineHeight: 1.7 }}>
+          <span style={{ fontWeight: 700, color: 'var(--gold)' }}>Como usar: </span>
+          Selecione uma aba abaixo → clique na nota → vá em <strong>Ações</strong> → escolha o que fazer. Seus registros são salvos automaticamente e a Linea é notificada.
+        </div>
 
-      {/* Ações pendentes — a lista de prioridade */}
-      {pendActions.length > 0 ? (
+        {/* Abas + conteúdo */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Ações que precisam da sua atenção</div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Ordenado por urgência — clique para atualizar</div>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{pendActions.length} item{pendActions.length !== 1 ? 's' : ''}</div>
-          </div>
-          <div>
-            {pendActions.map((it, i) => {
-              const aging = it.aging;
-              const agingColor = aging >= 30 ? '#F85149' : aging >= 15 ? '#D29922' : '#3FB950';
+          {/* Tab bar */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto', scrollbarWidth: 'none' }}>
+            {TABS.map(t => {
+              const cnt = counts[t.id];
+              const isActive = activeTab === t.id;
+              const isUrgent = t.id === 'urgente' && cnt > 0;
               return (
-                <button key={i} onClick={() => onOpenNote?.(it.note)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', background: 'transparent', border: 'none', borderBottom: i < pendActions.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', textAlign: 'left', transition: 'background 120ms' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-
-                  {/* Ícone */}
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: `${it.color}18`, border: `1px solid ${it.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-                    {it.icon}
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  style={{
+                    flex: 1, minWidth: 110, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    gap: 3, padding: '13px 10px', border: 'none', background: isActive ? 'rgba(166,139,92,0.06)' : 'transparent',
+                    borderBottom: isActive ? '2px solid var(--gold)' : '2px solid transparent',
+                    cursor: 'pointer', transition: 'all 120ms', flexShrink: 0, position: 'relative',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontSize: 15 }}>{t.emoji}</span>
+                    {cnt > 0 && (
+                      <span style={{
+                        background: isUrgent ? '#E53E3E' : isActive ? 'var(--gold)' : 'var(--surface-3)',
+                        color: '#fff', fontSize: 10, fontWeight: 700,
+                        padding: '1px 6px', borderRadius: 10, lineHeight: 1.4,
+                      }}>{cnt}</span>
+                    )}
                   </div>
-
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>NFD {it.note.nfd}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>· {it.note.nfo}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>{it.note.cl || 'Cliente'} · {fmt(it.note.v || 0)}</div>
-                    <div style={{ fontSize: 11, color: it.color, fontWeight: 500 }}>{it.label}</div>
-                  </div>
-
-                  {/* Aging */}
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: agingColor }}>{aging}<span style={{ fontSize: 11 }}>d</span></div>
-                    <div style={{ fontSize: 9, color: 'var(--text-3)' }}>em aberto</div>
-                  </div>
-
-                  <span style={{ color: 'var(--text-3)', fontSize: 14 }}>›</span>
+                  <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--gold)' : 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                    {t.label}
+                  </span>
+                  <span style={{ fontSize: 9, color: isActive ? 'var(--gold)' : 'var(--text-3)', whiteSpace: 'nowrap', opacity: 0.8 }}>
+                    {t.desc}
+                  </span>
                 </button>
               );
             })}
           </div>
-        </div>
-      ) : (
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '40px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>✅</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Tudo em dia!</div>
-          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Não há ações pendentes no momento.</div>
-        </div>
-      )}
 
-      {/* Guia de uso */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 20px' }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 12 }}>Como usar este portal</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[
-            { tab: 'tr_retorno',  icon: '📦', color: '#58A6FF', label: 'Devoluções',  desc: 'Informe status de retorno, agende entrega ou notifique extravios. Atualize em tempo real para a equipe da Linea.' },
-            { tab: 'tr_cobranca', icon: '📋', color: '#D29922',  label: 'Cobranças',   desc: 'Visualize cobranças abertas contra sua empresa. Aprove, conteste ou informe não responsabilidade com apenas um clique.' },
-          ].map(item => (
-            <button key={item.tab} onClick={() => onOpenTab(item.tab)}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', textAlign: 'left', transition: 'background 120ms' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${item.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{item.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{item.desc}</div>
-              </div>
-              <span style={{ color: item.color, fontSize: 16, fontWeight: 700 }}>→</span>
-            </button>
-          ))}
+          {/* Conteúdo da aba */}
+          <div style={{ padding: '16px 16px 8px' }}>
+            {renderContent()}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* NoteDrawer embutido — abre quando clica numa nota */}
+      {drawerNote && (
+        <NoteDrawer
+          note={drawerNote}
+          mode={drawerMode}
+          initialTab="actions"
+          onClose={() => setDrawerNote(null)}
+          statuses={statuses}
+          extras={extras}
+          history={history}
+          user={user}
+          isTransporter
+          addChatMessage={addChatMessage}
+          onStatus={onStatus}
+          onTracking={onTracking}
+          onOpenEmail={onOpenEmail}
+          onSetTransporter={onSetTransporter}
+          transporterNames={transporterNames}
+          onSaveAcceptance={acceptanceHandler}
+          acceptanceData={extras}
+          permissions={permissions}
+          noteMeta={noteMeta}
+          saveMeta={saveMeta}
+          users={users}
+        />
+      )}
+    </>
   );
 }
