@@ -53,7 +53,7 @@ export default function EmailModal({ open, notes = [], transporterName = '', def
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    if (open) { setTo(defaultTo || ''); setCc(''); setObs(''); }
+    if (open) { setTo(defaultTo || ''); setCc('transporte@lineaalimentos.com.br'); setObs(''); }
   }, [open, defaultTo]);
 
   const subject = useMemo(() => `Notificação de Débito — ${transporterName || 'Transportador'} — ${notes.length} nota(s)`, [transporterName, notes.length]);

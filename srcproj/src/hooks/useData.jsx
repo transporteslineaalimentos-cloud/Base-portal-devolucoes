@@ -225,8 +225,19 @@ export function DataProvider({ children }) {
   // getTrEmails: lê da lista em memória (carregada no loadAll)
   const getTrEmails = useCallback((trName) => {
     if (!trName) return '';
+    // exact match
     const tr = transportadores.find(t => t.nome === trName);
     if (tr) return tr.emails || '';
+    // case-insensitive match
+    const lower = trName.toLowerCase().trim();
+    const tr2 = transportadores.find(t => (t.nome || '').toLowerCase().trim() === lower);
+    if (tr2) return tr2.emails || '';
+    // partial match (name contains or is contained)
+    const tr3 = transportadores.find(t => {
+      const n = (t.nome || '').toLowerCase().trim();
+      return n && (n.includes(lower) || lower.includes(n));
+    });
+    if (tr3) return tr3.emails || '';
     // fallback: extras legados (migração)
     const k = 'tr_email:' + trName;
     const v = extras[k];

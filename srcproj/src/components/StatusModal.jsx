@@ -63,7 +63,8 @@ export default function StatusModal({ open, title, showDate = false, showNfField
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <label className="input-label">
-                {title.toLowerCase().includes('trânsito') ? 'Data prevista de chegada' :
+                {title.toLowerCase().includes('trânsito') ? 'Previsão de chegada na filial origem' :
+                 title.toLowerCase().includes('recebida') ? 'Data de chegada na filial' :
                  title.toLowerCase().includes('solicitado') ? 'Data em que solicitou o agendamento' :
                  title.toLowerCase().includes('confirmado') ? 'Data confirmada de agendamento' :
                  'Data da entrega'}
