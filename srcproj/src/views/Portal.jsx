@@ -1,22 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from '../hooks/useAuth.jsx';
 import { DataProvider, useData } from '../hooks/useData.jsx';
 import Login from './Login';
 import Dashboard from './Dashboard';
-import DashboardAvancado from './DashboardAvancado';
 import PendCobranca from './PendCobranca';
 import PendLancamento from './PendLancamento';
 import Acompanhamento from './Acompanhamento';
-import NfsDebito from './NfsDebito';
-import Transportadores from './Transportadores';
-import Aging from './Aging';
 import TransportDash from './TransportDash';
 import TransportPendentes from './TransportPendentes';
 import TransportAndamento from './TransportAndamento';
 import TransportEntregas from './TransportEntregas';
 import TransportCobrancas from './TransportCobrancas';
-import AuditLog from './AuditLog';
-import UsuariosAdmin from './UsuariosAdmin';
 import NoteDrawer from '../components/NoteDrawer';
 import StatusModal from '../components/StatusModal';
 import EmailModal from '../components/EmailModal';
@@ -36,6 +30,24 @@ import {
   calcAging, transporterCanSee, getTracking, getStatus
 } from '../utils/helpers';
 import { useTheme } from '../hooks/useTheme.jsx';
+
+// ── Lazy-loaded heavy views (Recharts, tables, charts) ──────────
+const DashboardAvancado = lazy(() => import('./DashboardAvancado'));
+const Aging             = lazy(() => import('./Aging'));
+const AuditLog          = lazy(() => import('./AuditLog'));
+const UsuariosAdmin     = lazy(() => import('./UsuariosAdmin'));
+const Transportadores   = lazy(() => import('./Transportadores'));
+const NfsDebito         = lazy(() => import('./NfsDebito'));
+
+function LazyFallback() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 24px' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
+        Carregando...
+      </div>
+    </div>
+  );
+}
 
 const DEFAULT_FILTERS = { search: '', area: 'TODOS', status: 'todos', transporters: [], agingCat: null };
 
@@ -121,7 +133,6 @@ function Portal() {
   const nfGroups = useMemo(() => groupByNfDeb(myC, extras, history), [myC, extras, history]);
   const trSummary = useMemo(() => summarizeTransporters([...myC, ...myP], extras), [myC, myP, extras]);
 
-  // ── Counts do transportador (para sidebar badges) ──────────────
   const trCounts = useMemo(() => {
     if (!isTransporter) return {};
     return {
@@ -288,14 +299,10 @@ function Portal() {
     setNotifOpen(false);
     if (!notif.nf_key) return;
     const allNotes = [...(data?.cobr || []), ...(data?.pend || [])];
-    const note = allNotes.find(n => {
-      const k = `${n.nfd || ''}|${n.nfo || ''}`;
-      return k === notif.nf_key;
-    });
+    const note = allNotes.find(n => `${n.nfd || ''}|${n.nfo || ''}` === notif.nf_key);
     if (!note) return;
     const isCobr = (data?.cobr || []).includes(note);
-    const destTab = isCobr ? 'cobranca' : 'lancamento';
-    changeTab(destTab);
+    changeTab(isCobr ? 'cobranca' : 'lancamento');
     setPendingNoteOpen({ key: notif.nf_key, initialTab: 'timeline' });
   };
 
@@ -335,56 +342,43 @@ function Portal() {
     onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
     pendingNoteOpen, onPendingNoteConsumed: () => setPendingNoteOpen(null),
     exportButton: permissions.canExport ? (
-      <button onClick={exportCurrentView} className="btn btn-outline btn-sm">
-        ⬇ Excel
-      </button>
+      <button onClick={exportCurrentView} className="btn btn-outline btn-sm">⬇ Excel</button>
     ) : null,
   };
 
   const renderContent = () => {
     // ── Internal views ──────────────────────────────────────────
-    if (tab === 'dashboard' && !isTransporter)     return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
-    if (tab === 'dashboard_adv' && !isTransporter) return <DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} />;
+    if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
+    if (tab === 'dashboard_adv' && !isTransporter) return <Suspense fallback={<LazyFallback />}><DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} /></Suspense>;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
     if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
     if (tab === 'acompanhamento') return <Acompanhamento {...commonListProps} notes={myP} />;
-    if (tab === 'nfDebito') return <NfsDebito groups={nfGroups} />;
+    if (tab === 'nfDebito') return <Suspense fallback={<LazyFallback />}><NfsDebito groups={nfGroups} /></Suspense>;
     if (tab === 'transportadores') return (
-      <Transportadores
-        summary={trSummary}
-        getEmails={getTrEmails}
-        setEmails={setTrEmails}
-        transportadores={transportadores}
-        saveTransportador={saveTransportador}
-        onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
-      />
+      <Suspense fallback={<LazyFallback />}>
+        <Transportadores
+          summary={trSummary} getEmails={getTrEmails} setEmails={setTrEmails}
+          transportadores={transportadores} saveTransportador={saveTransportador}
+          onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
+        />
+      </Suspense>
     );
-    if (tab === 'aging') return <Aging pendNotes={myP} extras={extras} />;
-    if (tab === 'auditoria') return <AuditLog audit={audit} />;
-    if (tab === 'usuarios') return <UsuariosAdmin />;
+    if (tab === 'aging') return <Suspense fallback={<LazyFallback />}><Aging pendNotes={myP} extras={extras} /></Suspense>;
+    if (tab === 'auditoria') return <Suspense fallback={<LazyFallback />}><AuditLog audit={audit} /></Suspense>;
+    if (tab === 'usuarios') return <Suspense fallback={<LazyFallback />}><UsuariosAdmin /></Suspense>;
 
-    // ── Transporter views — each with its own page + filters ────
+    // ── Transporter views ───────────────────────────────────────
     if (tab === 'tr_dash' && isTransporter) return (
-      <TransportDash
-        myC={myC} myP={myP} statuses={statuses}
-        transporterName={transporterName}
-        extras={extras} onChangeTab={changeTab}
-      />
+      <TransportDash myC={myC} myP={myP} statuses={statuses} transporterName={transporterName} extras={extras} onChangeTab={changeTab} />
     );
     if (tab === 'tr_pendentes' && isTransporter) {
       const pendDevol = myP.filter(n => ['retorno_auto', 'perdeu_agenda'].includes(getTracking(n, statuses)));
       const pendCobr = myC.filter(n => getStatus(n, statuses) === 'cobr_tr');
       return <TransportPendentes {...commonListProps} cobrNotes={myC} pendNotes={myP} notes={[...pendDevol, ...pendCobr]} />;
     }
-    if (tab === 'tr_andamento' && isTransporter) return (
-      <TransportAndamento {...commonListProps} notes={myP} />
-    );
-    if (tab === 'tr_entregas' && isTransporter) return (
-      <TransportEntregas {...commonListProps} notes={myP} />
-    );
-    if (tab === 'tr_cobrancas' && isTransporter) return (
-      <TransportCobrancas {...commonListProps} notes={myC} />
-    );
+    if (tab === 'tr_andamento' && isTransporter) return <TransportAndamento {...commonListProps} notes={myP} />;
+    if (tab === 'tr_entregas' && isTransporter) return <TransportEntregas {...commonListProps} notes={myP} />;
+    if (tab === 'tr_cobrancas' && isTransporter) return <TransportCobrancas {...commonListProps} notes={myC} />;
 
     return null;
   };
@@ -406,20 +400,14 @@ function Portal() {
         onChangeTab={changeTab}
         visibleTabs={[
           ...permissions.visibleTabs,
-          ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv')
-            ? ['dashboard_adv'] : []),
+          ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv') ? ['dashboard_adv'] : []),
         ]}
         counts={{
-          cobranca: myC.length,
-          lancamento: myP.length,
+          cobranca: myC.length, lancamento: myP.length,
           acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length,
           ...trCounts,
         }}
-        user={user}
-        onLogout={logout}
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
-        isTransporter={isTransporter}
+        user={user} onLogout={logout} isDark={isDark} onToggleTheme={toggleTheme} isTransporter={isTransporter}
       />
 
       <div className="app-main">
@@ -428,30 +416,16 @@ function Portal() {
             <div className="topbar-title">{pageTitle}</div>
             {pageDesc && <div className="topbar-sub">{pageDesc}</div>}
           </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {!isTransporter && permissions.canImport && (
-              <button onClick={() => syncFromGitHub(false)} className="btn btn-outline btn-sm">
-                🔄 Atualizar
-              </button>
+              <button onClick={() => syncFromGitHub(false)} className="btn btn-outline btn-sm">🔄 Atualizar</button>
             )}
             {permissions.canExport && (
-              <button onClick={exportComplete} className="btn btn-gold btn-sm">
-                ⬇ Excel completo
-              </button>
+              <button onClick={exportComplete} className="btn btn-gold btn-sm">⬇ Excel completo</button>
             )}
-            <div style={{ position: 'relative' }}>
-              <NotificationBell
-                items={notifications}
-                open={notifOpen}
-                onToggle={() => setNotifOpen(v => !v)}
-                onRead={handleNotifClick}
-              />
-            </div>
+            <NotificationBell items={notifications} open={notifOpen} onToggle={() => setNotifOpen(v => !v)} onRead={handleNotifClick} />
             <div style={{ height: 28, width: 1, background: 'var(--border)', margin: '0 4px' }} />
-            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
-              {user?.name || user?.email}
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{user?.name || user?.email}</div>
           </div>
         </header>
 
@@ -460,9 +434,7 @@ function Portal() {
             <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-3)', fontSize: 14 }}>
               Sem dados carregados. Clique em "Atualizar" para buscar do GitHub.
             </div>
-          ) : (
-            renderContent()
-          )}
+          ) : renderContent()}
         </main>
       </div>
 
@@ -470,23 +442,16 @@ function Portal() {
       <StatusModal
         open={statusModal.open}
         title={statusModal.type === 'status' ? `Atualizar status: ${statusModal.label}` : `Atualizar tracking: ${statusModal.label}`}
-        showDate={statusModal.showDate}
-        showNfFields={statusModal.showNfFields}
-        confirmOnly={statusModal.confirmOnly}
-        showAttach={statusModal.showAttach}
-        onClose={closeStatusModal}
-        onConfirm={confirmStatusModal}
-        loading={statusLoading}
+        showDate={statusModal.showDate} showNfFields={statusModal.showNfFields}
+        confirmOnly={statusModal.confirmOnly} showAttach={statusModal.showAttach}
+        onClose={closeStatusModal} onConfirm={confirmStatusModal} loading={statusLoading}
       />
       <EmailModal
-        open={emailModal.open}
-        notes={emailModal.notes}
-        transporterName={emailModal.transporterName}
+        open={emailModal.open} notes={emailModal.notes} transporterName={emailModal.transporterName}
         defaultTo={emailModal.defaultTo}
         onClose={() => setEmailModal({ open: false, notes: [], transporterName: '', defaultTo: '' })}
         onSent={handleEmailSent}
       />
-
       {editTransport.open && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditTransport({ open: false, note: null, value: '' })}>
           <div className="modal">
@@ -495,12 +460,7 @@ function Portal() {
               <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{editTransport.note?.cl}</p>
             </div>
             <div className="modal-body">
-              <input
-                value={editTransport.value}
-                onChange={e => setEditTransport(prev => ({ ...prev, value: e.target.value }))}
-                placeholder="Nome do transportador"
-                className="input"
-              />
+              <input value={editTransport.value} onChange={e => setEditTransport(prev => ({ ...prev, value: e.target.value }))} placeholder="Nome do transportador" className="input" />
             </div>
             <div className="modal-footer">
               <button onClick={() => setEditTransport({ open: false, note: null, value: '' })} className="btn btn-outline">Cancelar</button>
@@ -509,13 +469,12 @@ function Portal() {
           </div>
         </div>
       )}
-
       {batchStatusOpen && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setBatchStatusOpen(false)}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Mudar status em lote</h2>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{selected.size} registro(s) selecionado(s)</p>
+              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{selected.size} registro(s)</p>
             </div>
             <div className="modal-body">
               <label className="input-label">Novo status</label>
@@ -543,9 +502,7 @@ function AppRouter() {
   const { user, loading, needsPwChange } = useAuth();
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
-        Conectando...
-      </div>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>Conectando...</div>
     </div>
   );
   if (!user || needsPwChange) return <Login />;
