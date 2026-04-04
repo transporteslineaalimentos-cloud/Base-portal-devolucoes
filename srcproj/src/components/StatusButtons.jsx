@@ -76,7 +76,7 @@ export default function StatusButtons({ mode, isTransporter, onStatus, onTrackin
         return (
           <button
             key={t.v}
-            onClick={() => onTracking(t.v, t.l, !!t.hasDate)}
+            onClick={() => onTracking(t.v, t.l, !!t.hasDate, !!t.hasAttach)}
             className={`btn btn-sm ${isSuggested ? 'btn-suggested' : 'btn-outline'}`}
             style={{
               borderColor: isNegative ? 'rgba(220,38,38,0.4)' : undefined,

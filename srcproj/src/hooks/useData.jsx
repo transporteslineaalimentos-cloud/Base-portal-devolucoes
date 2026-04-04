@@ -1,10 +1,11 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import {
   dbLoad, dbSave, dbLoadStatuses, dbSaveStatus, dbLoadHistory, dbAddHistory,
   dbLoadExtras, dbSaveExtra, dbGetLastGithubSignal, notifyTransporter,
   dbLoadTransportadores, dbSaveTransportador, dbGetTransportadorEmails,
   dbLoadKpiSnapshots
 } from '../config/supabase';
+import { supabase } from '../config/constants';
 import { GH_URL } from '../config/constants';
 import { processExcel } from '../utils/excel';
 
@@ -92,16 +93,29 @@ export function DataProvider({ children }) {
     await dbSave(newData);
   }, []);
 
-  const setNoteStatus = useCallback(async (key, value, obs, userName, nfDeb = '', pdfUrl = '', pedido = '') => {
+  const setNoteStatus = useCallback(async (key, value, obs, userName, nfDeb = '', pdfUrl = '', pedido = '', valorNf = '') => {
     const oldVal = statuses[key] || 'pendente';
     const newStatuses = { ...statuses, [key]: 'st:' + value };
     setStatuses(newStatuses);
     await dbSaveStatus(key, 'st:' + value);
 
-    if (nfDeb || pdfUrl || pedido) {
-      const ex = { ...(extras[key] || {}), ...(nfDeb ? { nfDeb } : {}), ...(pdfUrl ? { pdfUrl } : {}), ...(pedido ? { pedido } : {}) };
-      const newExtras = { ...extras, [key]: ex };
-      setExtras(newExtras);
+    if (nfDeb || pdfUrl || pedido || valorNf) {
+      // Usar functional update para evitar stale closure nos extras
+      let currentEx = {};
+      setExtras(prev => {
+        currentEx = typeof prev[key] === 'object' && prev[key] !== null ? prev[key] : {};
+        return prev;
+      });
+      // Aguardar um tick para currentEx ser preenchido
+      await new Promise(r => setTimeout(r, 0));
+      const ex = {
+        ...currentEx,
+        ...(nfDeb   ? { nfDeb }   : {}),
+        ...(pdfUrl  ? { pdfUrl }  : {}),
+        ...(pedido  ? { pedido }  : {}),
+        ...(valorNf ? { valorNfCobrado: valorNf } : {}),
+      };
+      setExtras(prev => ({ ...prev, [key]: ex }));
       await dbSaveExtra(key, ex);
     }
 
@@ -141,17 +155,25 @@ export function DataProvider({ children }) {
     return entry;
   }, [statuses, extras, data]);
 
-  const setNoteTracking = useCallback(async (key, value, obs, userName, date = '') => {
+  const setNoteTracking = useCallback(async (key, value, obs, userName, date = '', pdfUrl = '') => {
     const oldVal = statuses[key] || 'tk:aguardando';
     const newStatuses = { ...statuses, [key]: 'tk:' + value };
     setStatuses(newStatuses);
     await dbSaveStatus(key, 'tk:' + value);
+
+    // Salvar comprovante no extras vinculado ao status específico
+    if (pdfUrl) {
+      const ex = { ...(extras[key] || {}), [`pdfUrl_${value}`]: pdfUrl };
+      setExtras(prev => ({ ...prev, [key]: ex }));
+      await dbSaveExtra(key, ex);
+    }
 
     const entry = {
       nf_key: key,
       action: 'Tracking',
       status_from: String(oldVal).replace('tk:', ''),
       status_to: value + (date ? ` (${date})` : ''),
+      nf_debito: pdfUrl ? `[comprovante]` : '',
       observation: obs || '',
       user_name: userName,
       created_at: new Date().toISOString()
@@ -159,7 +181,7 @@ export function DataProvider({ children }) {
     await dbAddHistory(entry);
     setHistory(prev => [entry, ...prev]);
     return entry;
-  }, [statuses]);
+  }, [statuses, extras]);
 
   const saveExtra = useCallback(async (key, value) => {
     const newExtras = { ...extras, [key]: value };
@@ -230,6 +252,44 @@ export function DataProvider({ children }) {
       return [...prev, { nome, ...fields }];
     });
   }, []);
+
+  // ── REALTIME — recebe mudanças de outros usuários em tempo real ──────────
+  useEffect(() => {
+    const channel = supabase
+      .channel('portal-realtime-data', { config: { broadcast: { self: false } } })
+
+      // Status atualizado por outro usuário → atualizar mapa local imediatamente
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'portal_statuses' }, (payload) => {
+        if (payload.new?.key && payload.new?.status) {
+          setStatuses(prev => ({ ...prev, [payload.new.key]: payload.new.status }));
+        }
+      })
+
+      // Extras atualizados (transportador, CT-e, aceite) → mesclar com estado atual
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'portal_extras' }, (payload) => {
+        if (payload.new?.key) {
+          setExtras(prev => ({ ...prev, [payload.new.key]: payload.new.value }));
+        }
+      })
+
+      // Novo evento na linha do tempo → adicionar ao histórico
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'portal_history' }, (payload) => {
+        if (payload.new) {
+          setHistory(prev => [payload.new, ...prev]);
+        }
+      })
+
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.info('[Realtime] Conectado — atualizações em tempo real ativas ✓');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn('[Realtime] Erro de conexão — tentando reconectar...');
+        }
+      });
+
+    return () => { supabase.removeChannel(channel); };
+  }, []); // eslint-disable-line
+  // ────────────────────────────────────────────────────────────────────────
 
   return (
     <DataContext.Provider value={{

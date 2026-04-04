@@ -210,8 +210,8 @@ export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, note
   /* ── Dados computados ──────────────────────────────────────── */
   const kpis = useMemo(() => {
     const totalV    = all.reduce((s, n) => s + (n.v || 0), 0);
-    const cobrAberto = cobrNotes.filter(n => !['emitida','cobrada','paga','cancelada'].includes(getStatus(n, statuses)));
-    const cobrFech  = cobrNotes.filter(n => ['emitida','cobrada','paga'].includes(getStatus(n, statuses)));
+    const cobrAberto = cobrNotes.filter(n => !['emitida','cobrada','cancelada'].includes(getStatus(n, statuses)));
+    const cobrFech  = cobrNotes.filter(n => ['emitida','cobrada'].includes(getStatus(n, statuses)));
     const ticketMed = cobrNotes.length ? totalV / cobrNotes.length : 0;
     const agingMed  = (() => { const a = all.map(n => calcAging(n)).filter(x => x !== null); return a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0; })();
     const pctRecup  = cobrNotes.length ? (cobrFech.length / cobrNotes.length) * 100 : 0;
@@ -341,7 +341,6 @@ export default function DashboardAvancado({ cobrNotes, pendNotes, statuses, note
               {[
                 { l: 'Em aberto', v: kpis.cobrAberto, c: C.amber },
                 { l: 'Emitido/Cobrado', v: kpis.cobrFech, c: C.blue },
-                { l: 'Pago', v: cobrNotes.filter(n=>getStatus(n,statuses)==='paga').length, c: C.green },
               ].map(d => (
                 <div key={d.l} style={{ flex: 1, textAlign: 'center', background: 'var(--surface-2)', borderRadius: 8, padding: '8px 4px', border: `1px solid ${d.c}30` }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: d.c }}>{d.v}</div>

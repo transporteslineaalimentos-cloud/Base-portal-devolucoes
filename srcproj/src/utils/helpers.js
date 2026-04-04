@@ -134,7 +134,6 @@ export function deriveWorkflow(mode, currentValue, meta = {}) {
     if (currentValue === 'aprovar_ret') return { ...base, pendingWith: 'interno', nextAction: 'Analisar necessidade de retorno antes de cobrar.' };
     if (currentValue === 'emitida') return { ...base, pendingWith: 'controladoria', nextAction: 'Acompanhar envio e confirmação da cobrança.', transporterResponse: 'Posicionado' };
     if (currentValue === 'cobrada') return { ...base, pendingWith: 'controladoria', nextAction: 'Acompanhar pagamento.', transporterResponse: 'Posicionado' };
-    if (currentValue === 'paga') return { ...base, pendingWith: 'encerrado', nextAction: 'Processo finalizado.', transporterResponse: 'Posicionado' };
     if (currentValue === 'cancelada') return { ...base, pendingWith: 'encerrado', nextAction: 'Cobrança cancelada.', transporterResponse: 'Posicionado' };
     return base;
   }
@@ -214,10 +213,11 @@ export function groupByNfDeb(cobrNotes, extras = {}, history = []) {
     const ex = extras[key] || {};
     const nfDeb = typeof ex === 'object' ? ex.nfDeb : null;
     if (!nfDeb) return;
-    if (!map[nfDeb]) map[nfDeb] = { nfDeb, pedido: '', pdfUrl: '', notes: [], history: [] };
+    if (!map[nfDeb]) map[nfDeb] = { nfDeb, pedido: '', pdfUrl: '', valorNfCobrado: '', notes: [], history: [] };
     map[nfDeb].notes.push(note);
-    if (!map[nfDeb].pdfUrl && ex.pdfUrl) map[nfDeb].pdfUrl = ex.pdfUrl;
-    if (!map[nfDeb].pedido && ex.pedido) map[nfDeb].pedido = ex.pedido;
+    if (!map[nfDeb].pdfUrl         && ex.pdfUrl)         map[nfDeb].pdfUrl         = ex.pdfUrl;
+    if (!map[nfDeb].pedido          && ex.pedido)          map[nfDeb].pedido          = ex.pedido;
+    if (!map[nfDeb].valorNfCobrado  && ex.valorNfCobrado)  map[nfDeb].valorNfCobrado  = ex.valorNfCobrado;
   });
   Object.values(map).forEach(group => {
     const keys = new Set(group.notes.map(getNoteKey));

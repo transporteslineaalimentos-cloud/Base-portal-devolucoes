@@ -14,9 +14,9 @@ export const RULES = [
     action: () => ({ retorno_autorizado: true })
   },
   {
-    nome: 'Pago → Travar edição',
+    nome: 'Cobrada → Travar edição',
     trigger: 'status_change',
-    condition: (note, payload) => payload?.newStatus === 'paga',
+    condition: (note, payload) => payload?.newStatus === 'cobrada',
     action: () => ({ locked: true })
   },
   {

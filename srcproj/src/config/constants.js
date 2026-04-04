@@ -34,11 +34,9 @@ export const SO = [
     requires_nfd: true,
     next_internal: ['emitida'], next_transp: [] },
   { v: 'emitida',      l: 'NF débito emitida',                   c: '#10b981', bg: '#ecfdf5',
-    final: true,  transp: true,
-    next_internal: [], next_transp: [] },
+    final: false, transp: true,
+    next_internal: ['cobrada'], next_transp: [] },
   { v: 'cobrada',      l: 'Cobrada',                             c: '#3b82f6', bg: '#eff6ff',
-    final: true,  transp: false, next_internal: [], next_transp: [] },
-  { v: 'paga',         l: 'Paga',                                c: '#8b5cf6', bg: '#f5f3ff',
     final: true,  transp: false, next_internal: [], next_transp: [] },
   { v: 'cancelada',    l: 'Cancelada',                           c: '#9ca3af', bg: '#f8fafc',
     final: true,  transp: false, requires_obs: true,
@@ -79,7 +77,7 @@ export const TK = [
     next_internal: [],
     next_transp: ['em_transito', 'extravio'] },
   { v: 'em_transito',     l: 'Em trânsito p/ filial origem',  c: '#8b5cf6', bg: '#f5f3ff', i: '🚚',
-    final: false, transp: true,
+    final: false, transp: true, hasDate: true,
     next_internal: [],
     next_transp: ['recebida_filial', 'extravio'] },
   { v: 'recebida_filial', l: 'Recebida na filial origem',     c: '#2563eb', bg: '#eff6ff', i: '🏪',
@@ -87,14 +85,14 @@ export const TK = [
     next_internal: [],
     next_transp: ['agend_solicitado', 'extravio'] },
   { v: 'agend_solicitado',l: 'Agendamento solicitado',        c: '#0891b2', bg: '#ecfeff', i: '📅',
-    final: false, transp: true,
+    final: false, transp: true, hasDate: true, hasAttach: true,
     next_internal: [],
     next_transp: ['agend_confirmado', 'extravio'] },
-  { v: 'agend_confirmado',l: 'Agendamento confirmado',        c: '#0d9488', bg: '#f0fdfa', i: '📋', hasDate: true,
+  { v: 'agend_confirmado',l: 'Agendamento confirmado',        c: '#0d9488', bg: '#f0fdfa', i: '📋', hasDate: true, hasAttach: true,
     final: false, transp: true,
     next_internal: [],
     next_transp: ['entregue', 'extravio'] },
-  { v: 'entregue',        l: 'Entregue',                      c: '#059669', bg: '#ecfdf5', i: '✅', hasDate: true,
+  { v: 'entregue',        l: 'Entregue',                      c: '#059669', bg: '#ecfdf5', i: '✅', hasDate: true, hasAttach: true,
     final: true,  transp: true, next_internal: [], next_transp: [] },
   { v: 'extravio',        l: 'Extravio informado',            c: '#7f1d1d', bg: '#fef2f2', i: '⛔',
     final: false, transp: true,
@@ -122,14 +120,14 @@ export const TK = [
 export const TK_INTERNAL  = ['aguardando','notificado','ret_nao_auto','perdeu_agenda','dev_recusada','dev_apos_dt','encaminhar'];
 export const TK_TRANSPORT = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','entregue','extravio','agendado','perdeu_agenda'];
 
-export const COBR_TRANSPORT_VISIBLE    = ['cobr_tr','tr_contestou','tr_concordou','tr_nao_resp','emitida','cobrada','paga'];
+export const COBR_TRANSPORT_VISIBLE    = ['cobr_tr','tr_contestou','tr_concordou','tr_nao_resp','emitida','cobrada'];
 export const COBR_TRANSPORT_ACTIONABLE = ['cobr_tr'];
 export const COBR_TRANSPORT_RESPONSES  = ['tr_contestou','tr_concordou','tr_nao_resp'];
 
 export const LANC_TRANSPORT_VISIBLE    = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','entregue','extravio','agendado','perdeu_agenda','dev_recusada'];
 export const LANC_TRANSPORT_ACTIONABLE = ['retorno_auto','ag_consolidacao','em_transito','recebida_filial','agend_solicitado','agend_confirmado','agendado','perdeu_agenda','extravio'];
 
-export const COBR_FINALIZERS = ['emitida','cobrada','paga','cancelada'];
+export const COBR_FINALIZERS = ['emitida','cobrada','cancelada'];
 export const LANC_FINALIZERS = ['entregue','encaminhar','ret_nao_auto'];
 export const LANC_MOVERS     = ['encaminhar'];
 

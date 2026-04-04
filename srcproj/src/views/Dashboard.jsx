@@ -46,7 +46,7 @@ export default function Dashboard({ cobrNotes, pendNotes, statuses, onOpenTab, n
   const totalCobrPendenteN = (stC['pendente']?.n || 0) + (stC['validado']?.n || 0) + (stC['cobr_tr']?.n || 0);
 
   // Fake sparkline trends (based on status distribution)
-  const cobrTrend = [stC['cancelada']?.n||0, stC['paga']?.n||0, stC['cobrada']?.n||0, stC['emitida']?.n||0, totalCobrPendenteN].map((v,i) => v + i);
+  const cobrTrend = [stC['cancelada']?.n||0, stC['cobrada']?.n||0, stC['emitida']?.n||0, totalCobrPendenteN].map((v,i) => v + i);
   const pendTrend = [0, pendAtivos.length * 0.3, pendAtivos.length * 0.6, pendAtivos.length * 0.8, pendAtivos.length].map(v => Math.round(v));
   const agingTrend = [0, agingExp.length * 0.2, agingExp.length * 0.5, agingExp.length * 0.8, agingExp.length].map(v => Math.round(v));
 

@@ -10,8 +10,6 @@ import Acompanhamento from './Acompanhamento';
 import NfsDebito from './NfsDebito';
 import Transportadores from './Transportadores';
 import Aging from './Aging';
-import ProtheusSync from './ProtheusSync';
-import RiscoTransportadores from './RiscoTransportadores';
 import TransportDash from './TransportDash';
 import AuditLog from './AuditLog';
 import UsuariosAdmin from './UsuariosAdmin';
@@ -46,8 +44,6 @@ const PAGE_TITLES = {
   transportadores:'Por Transportador',
   aging:          'Aging',
   auditoria:      'Auditoria',
-  risco:          'Score de Risco por Transportadora',
-  protheus_sync:  'Integração Protheus',
   usuarios:       'Usuários',
   tr_dash:        'Dashboard',
   tr_retorno:     'Devoluções',
@@ -81,6 +77,8 @@ function Portal() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [batchStatusOpen, setBatchStatusOpen] = useState(false);
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
+  // Chave de nota a ser aberta programaticamente (via clique em notificação)
+  const [pendingNoteOpen, setPendingNoteOpen] = useState(null); // { key, tab }
 
   useEffect(() => {
     loadAll();
@@ -138,10 +136,11 @@ function Portal() {
   };
 
   const openStatusModal = (key, val, label, isEmitida = false) => {
-    setStatusModal({ open: true, type: 'status', key, val, label, showDate: false, showNfFields: isEmitida, batchKeys: [] });
+    const confirmOnly = val === 'validado'; // validado só precisa de confirmação simples
+    setStatusModal({ open: true, type: 'status', key, val, label, showDate: false, showNfFields: isEmitida, confirmOnly, batchKeys: [] });
   };
-  const openTrackingModal = (key, val, label, hasDate = false) => {
-    setStatusModal({ open: true, type: 'tracking', key, val, label, showDate: hasDate, showNfFields: false, batchKeys: [] });
+  const openTrackingModal = (key, val, label, hasDate = false, hasAttach = false) => {
+    setStatusModal({ open: true, type: 'tracking', key, val, label, showDate: hasDate, showAttach: hasAttach, showNfFields: false, batchKeys: [] });
   };
   const closeStatusModal = () => setStatusModal(prev => ({ ...prev, open: false }));
 
@@ -177,12 +176,16 @@ function Portal() {
     return { ...currentMeta, ...(map[value] || {}) };
   };
 
-  const confirmStatusModal = async ({ obs, date, nfDeb, pedido, pdfFile }) => {
+  const confirmStatusModal = async ({ obs, date, nfDeb, pedido, valorNf, pdfFile }) => {
     setStatusLoading(true);
     try {
       let pdfUrl = '';
       if (statusModal.showNfFields && pdfFile) {
         pdfUrl = await uploadPdf(`${statusModal.key}_${nfDeb || 'nfdeb'}`, pdfFile);
+      }
+      // Upload de comprovante para tracking com hasAttach
+      if (statusModal.showAttach && pdfFile) {
+        pdfUrl = await uploadPdf(`${statusModal.key}_${statusModal.val}_${Date.now()}`, pdfFile);
       }
       const keys = statusModal.batchKeys?.length ? statusModal.batchKeys : [statusModal.key];
       for (const key of keys) {
@@ -190,11 +193,11 @@ function Portal() {
           ? (statuses[key]?.replace('st:', '') || 'pendente')
           : (statuses[key]?.replace('tk:', '') || 'aguardando');
         if (statusModal.type === 'status') {
-          await setNoteStatus(key, statusModal.val, obs || '', user?.name, nfDeb || '', pdfUrl || '', pedido || '');
+          await setNoteStatus(key, statusModal.val, obs || '', user?.name, nfDeb || '', pdfUrl || '', pedido || '', valorNf || '');
           await saveMeta(key, getAutoMetaPatch('status', statusModal.val, noteMeta[key] || {}));
           await logAudit({ nfKey: key, action: 'Status', field: 'status', oldValue, newValue: statusModal.val, obs, origin: statusModal.batchKeys?.length ? 'batch' : 'manual' });
         } else {
-          await setNoteTracking(key, statusModal.val, obs || '', user?.name, date || '');
+          await setNoteTracking(key, statusModal.val, obs || '', user?.name, date || '', pdfUrl || '');
           await saveMeta(key, getAutoMetaPatch('tracking', statusModal.val, noteMeta[key] || {}));
           await logAudit({ nfKey: key, action: 'Tracking', field: 'tracking', oldValue, newValue: statusModal.val, obs, origin: statusModal.batchKeys?.length ? 'batch' : 'manual' });
         }
@@ -267,6 +270,27 @@ function Portal() {
     setBatchStatusOpen(false);
   };
 
+  // ── Handler: clique em notificação → navega até a nota e abre linha do tempo ──
+  const handleNotifClick = (notif) => {
+    markRead(notif);
+    setNotifOpen(false);
+    if (!notif.nf_key) return;
+    // Descobrir se é cobrança (SO) ou devolução (TK)
+    const allNotes = [...(data?.cobr || []), ...(data?.pend || [])];
+    const note = allNotes.find(n => {
+      const k = `${n.nfd || ''}|${n.nfo || ''}`;
+      return k === notif.nf_key;
+    });
+    if (!note) return;
+    const isCobr = (data?.cobr || []).includes(note);
+    // Navegar para a aba correta
+    const destTab = isCobr ? 'cobranca' : 'lancamento';
+    changeTab(destTab);
+    // Sinalizar ao NoteListView para abrir essa nota na aba timeline
+    setPendingNoteOpen({ key: notif.nf_key, initialTab: 'timeline' });
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const acceptanceHandler = {
     opened: acceptanceModal.opened,
     key: acceptanceModal.key,
@@ -301,6 +325,7 @@ function Portal() {
     transporterNames: trSummary.map(t => t.name),
     acceptanceHandler, permissions, noteMeta, saveMeta, users,
     onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
+    pendingNoteOpen, onPendingNoteConsumed: () => setPendingNoteOpen(null),
     exportButton: permissions.canExport ? (
       <button onClick={exportCurrentView} className="btn btn-outline btn-sm">
         ⬇ Excel
@@ -335,9 +360,7 @@ function Portal() {
         }}
       />
     );
-    if (tab === 'risco') return <RiscoTransportadores />;
     if (tab === 'auditoria') return <AuditLog audit={audit} />;
-    if (tab === 'protheus_sync') return <ProtheusSync />;
     if (tab === 'usuarios') return <UsuariosAdmin />;
     if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} onOpenNote={(n) => { setDrawerNote(n); setDrawerMode(n.t === 'P' ? 'pend' : 'cobr'); }} />;
     if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={myP} />;
@@ -394,7 +417,7 @@ function Portal() {
                 items={notifications}
                 open={notifOpen}
                 onToggle={() => setNotifOpen(v => !v)}
-                onRead={(n) => { markRead(n); setNotifOpen(false); }}
+                onRead={handleNotifClick}
               />
             </div>
             <div style={{ height: 28, width: 1, background: 'var(--border)', margin: '0 4px' }} />
@@ -422,6 +445,8 @@ function Portal() {
         title={statusModal.type === 'status' ? `Atualizar status: ${statusModal.label}` : `Atualizar tracking: ${statusModal.label}`}
         showDate={statusModal.showDate}
         showNfFields={statusModal.showNfFields}
+        confirmOnly={statusModal.confirmOnly}
+        showAttach={statusModal.showAttach}
         onClose={closeStatusModal}
         onConfirm={confirmStatusModal}
         loading={statusLoading}

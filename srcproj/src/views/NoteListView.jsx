@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FilterBar from '../components/FilterBar';
 import TransportChips from '../components/TransportChips';
 import BatchBar from '../components/BatchBar';
@@ -11,13 +11,26 @@ export default function NoteListView({
   selected, setSelected, detailTab, setDetailTab,
   addChatMessage, user, isTransporter, history, onStatus, onTracking, onOpenEmail,
   onEditTransporter, onSetTransporter, transporterNames = [], acceptanceHandler, permissions, noteMeta, saveMeta, users,
-  onBatchGenerate, onBatchEmail, onBatchStatus, exportButton
+  onBatchGenerate, onBatchEmail, onBatchStatus, exportButton,
+  pendingNoteOpen = null, onPendingNoteConsumed = null,
 }) {
   const [drawerNote, setDrawerNote] = useState(null);
+  const [drawerInitialTab, setDrawerInitialTab] = useState('info');
 
   const items = filterNotes(notes, filters, statuses, mode, extras);
   const areas = [...new Set(notes.map(d => d.ar).filter(Boolean))].sort();
   const trSummary = summarizeTransporters(notes, extras).map(t => ({ name: t.name, count: t.count }));
+
+  // Abrir nota programaticamente quando vier da notificação
+  useEffect(() => {
+    if (!pendingNoteOpen?.key) return;
+    const target = notes.find(n => `${n.nfd || ''}|${n.nfo || ''}` === pendingNoteOpen.key);
+    if (target) {
+      setDrawerNote(target);
+      setDrawerInitialTab(pendingNoteOpen.initialTab || 'timeline');
+      onPendingNoteConsumed?.();
+    }
+  }, [pendingNoteOpen]); // eslint-disable-line
 
   const toggleSelected = (key) => {
     const next = new Set(selected);
@@ -102,7 +115,7 @@ export default function NoteListView({
               selected={selected}
               toggleSelected={toggleSelected}
               showSelection={!isTransporter}
-              onOpenDrawer={setDrawerNote}
+              onOpenDrawer={(note) => { setDrawerNote(note); setDrawerInitialTab('info'); }}
             />
           ))}
         </div>
@@ -112,8 +125,9 @@ export default function NoteListView({
       {drawerNote && (
         <NoteDrawer
           note={drawerNote}
+          initialTab={drawerInitialTab}
           mode={mode}
-          onClose={() => setDrawerNote(null)}
+          onClose={() => { setDrawerNote(null); setDrawerInitialTab('info'); }}
           statuses={statuses}
           extras={extras}
           history={history}

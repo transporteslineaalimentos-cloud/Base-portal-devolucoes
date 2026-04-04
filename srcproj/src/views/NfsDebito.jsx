@@ -51,10 +51,30 @@ export default function NfsDebito({ groups = [] }) {
                     {group.pedido && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Pedido {group.pedido}</span>}
                     {group.pdfUrl && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600, padding: '1px 6px', background: 'var(--green-dim)', borderRadius: 4 }}>PDF ✓</span>}
                   </div>
-                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{group.notes.length} nota(s) vinculada(s)</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{group.notes.length} nota(s) vinculada(s)</span>
+                    {group.valorNfCobrado && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--purple)', background: 'rgba(188,140,255,0.12)', padding: '2px 8px', borderRadius: 5, border: '1px solid rgba(188,140,255,0.25)' }}>
+                        Cobrado parcial: R$ {group.valorNfCobrado}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{fmt(group.totalValue || 0)}</span>
+                  <div style={{ textAlign: 'right' }}>
+                    {group.valorNfCobrado ? (
+                      <>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--purple)', fontVariantNumeric: 'tabular-nums' }}>
+                          R$ {group.valorNfCobrado}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                          cobrado · total {fmt(group.totalValue || 0)}
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{fmt(group.totalValue || 0)}</span>
+                    )}
+                  </div>
                   <span style={{ color: 'var(--text-3)', fontSize: 12 }}>{expanded === group.nfDeb ? '▾' : '▸'}</span>
                 </div>
               </button>
