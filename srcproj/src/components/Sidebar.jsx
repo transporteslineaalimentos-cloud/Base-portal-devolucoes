@@ -1,9 +1,9 @@
 import { useState } from 'react';
 
-const Icon = ({ d, size = 18, className = '' }) => (
+const Icon = ({ d, size = 18, className = '', style = {} }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-    strokeLinejoin="round" className={className}>
+    strokeLinejoin="round" className={className} style={style}>
     <path d={d} />
   </svg>
 );
@@ -25,13 +25,12 @@ const icons = {
   barChart:      'M12 20V10m6 10V4M6 20v-4',
   sun:           'M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 8a4 4 0 100 8 4 4 0 000-8z',
   moon:          'M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z',
+  bell:          'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9m-4.27 13a2 2 0 01-3.46 0',
+  package:       'M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12',
 };
 
-// Tabs que pertencem ao grupo de análises
 const ANALISES_TABS = ['dashboard', 'dashboard_adv', 'aging'];
-// Tabs do grupo cobranças
 const COBR_TABS = ['cobranca', 'nfDebito'];
-// Tabs do grupo devoluções
 const DEVOL_TABS = ['lancamento', 'acompanhamento'];
 
 function buildNav(visibleTabs, counts = {}) {
@@ -50,8 +49,12 @@ function buildNav(visibleTabs, counts = {}) {
     { id: 'transportadores', label: 'Transportadores',     icon: icons.transportador },
     { id: 'auditoria',       label: 'Auditoria',           icon: icons.auditoria },
     { id: 'usuarios',        label: 'Usuários',            icon: icons.usuarios },
-    // Transportador
+    // Transportador — páginas separadas na sidebar
     { id: 'tr_dash',         label: 'Dashboard',           icon: icons.dashboard },
+    { id: 'tr_pendentes',    label: 'Pendentes',           icon: icons.bell,          count: counts.tr_pendentes },
+    { id: 'tr_andamento',    label: 'Em andamento',        icon: icons.lancamento,    count: counts.tr_andamento },
+    { id: 'tr_entregas',     label: 'Entregas',            icon: icons.package,       count: counts.tr_entregas },
+    { id: 'tr_cobrancas',    label: 'Cobranças',           icon: icons.nfDebito,      count: counts.tr_cobrancas },
   ];
   return all.filter(i => visibleTabs.includes(i.id));
 }
@@ -93,7 +96,6 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
 
   const renderGroup = (groupItems, label, iconPath, open, setOpen) => {
     if (!groupItems.length) return null;
-    // Se algum item do grupo está ativo, mostrar grupo expandido por padrão
     const hasActive = groupItems.some(i => i.id === tab);
     return (
       <>
@@ -132,16 +134,9 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
           navItems.map(i => renderItem(i))
         ) : (
           <>
-            {/* Análises — Dashboard + Executivo + Aging */}
             {renderGroup(analisesGroup, 'Análises', icons.barChart, analisesOpen, setAnalisesOpen)}
-
-            {/* Cobranças — Cobranças + NFs Débito */}
             {renderGroup(cobrGroup, 'Cobranças', icons.cobranca, cobrOpen, setCobrOpen)}
-
-            {/* Devoluções — Todas + Acompanhamento */}
             {renderGroup(devolGroup, 'Devoluções', icons.lancamento, devolOpen, setDevolOpen)}
-
-            {/* Standalone */}
             {standalone.map(i => renderItem(i))}
           </>
         )}

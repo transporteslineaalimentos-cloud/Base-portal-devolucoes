@@ -11,6 +11,10 @@ import NfsDebito from './NfsDebito';
 import Transportadores from './Transportadores';
 import Aging from './Aging';
 import TransportDash from './TransportDash';
+import TransportPendentes from './TransportPendentes';
+import TransportAndamento from './TransportAndamento';
+import TransportEntregas from './TransportEntregas';
+import TransportCobrancas from './TransportCobrancas';
 import AuditLog from './AuditLog';
 import UsuariosAdmin from './UsuariosAdmin';
 import NoteDrawer from '../components/NoteDrawer';
@@ -29,7 +33,7 @@ import { generateNotification } from '../utils/notification';
 import {
   filterNotes, getVisibleCobranca, getVisibleLancamento, getTransporter,
   getNoteKey, groupByNfDeb, summarizeTransporters, toExportRows,
-  calcAging, transporterCanSee, getTracking
+  calcAging, transporterCanSee, getTracking, getStatus
 } from '../utils/helpers';
 import { useTheme } from '../hooks/useTheme.jsx';
 
@@ -39,14 +43,18 @@ const PAGE_TITLES = {
   dashboard:        'Dashboard',
   dashboard_adv:    'Dashboard Executivo',
   cobranca:         'Gestão de Cobranças',
-  lancamento:     'Todas as Devoluções',
-  acompanhamento: 'Em Acompanhamento (Transportador)',
-  nfDebito:       'NFs Débito',
-  transportadores:'Por Transportador',
-  aging:          'Aging',
-  auditoria:      'Auditoria',
-  usuarios:       'Usuários',
-  tr_dash:        'Dashboard',
+  lancamento:       'Todas as Devoluções',
+  acompanhamento:   'Em Acompanhamento (Transportador)',
+  nfDebito:         'NFs Débito',
+  transportadores:  'Por Transportador',
+  aging:            'Aging',
+  auditoria:        'Auditoria',
+  usuarios:         'Usuários',
+  tr_dash:          'Dashboard',
+  tr_pendentes:     'Pendentes',
+  tr_andamento:     'Em Andamento',
+  tr_entregas:      'Entregas',
+  tr_cobrancas:     'Cobranças',
 };
 
 function Portal() {
@@ -76,19 +84,11 @@ function Portal() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [batchStatusOpen, setBatchStatusOpen] = useState(false);
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
-  // Chave de nota a ser aberta programaticamente (via clique em notificação)
   const [pendingNoteOpen, setPendingNoteOpen] = useState(null);
-  // Drawer global do transportador
-  const [trDrawerNote, setTrDrawerNote] = useState(null);
-  const [trDrawerMode, setTrDrawerMode] = useState('pend');
 
   useEffect(() => {
     loadAll();
-    // Auto-reload silencioso a cada 5 minutos para manter dados atualizados
-    // e renovar a sessão com o Supabase preventivamente
-    const interval = setInterval(() => {
-      loadAll();
-    }, 5 * 60 * 1000);
+    const interval = setInterval(() => { loadAll(); }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line
 
@@ -121,6 +121,18 @@ function Portal() {
   const nfGroups = useMemo(() => groupByNfDeb(myC, extras, history), [myC, extras, history]);
   const trSummary = useMemo(() => summarizeTransporters([...myC, ...myP], extras), [myC, myP, extras]);
 
+  // ── Counts do transportador (para sidebar badges) ──────────────
+  const trCounts = useMemo(() => {
+    if (!isTransporter) return {};
+    return {
+      tr_pendentes: myC.filter(n => getStatus(n, statuses) === 'cobr_tr').length
+                  + myP.filter(n => ['retorno_auto', 'perdeu_agenda'].includes(getTracking(n, statuses))).length,
+      tr_andamento: myP.filter(n => ['ag_consolidacao', 'em_transito', 'recebida_filial', 'agend_solicitado'].includes(getTracking(n, statuses))).length,
+      tr_entregas:  myP.filter(n => ['agend_confirmado', 'agendado'].includes(getTracking(n, statuses))).length,
+      tr_cobrancas: myC.length,
+    };
+  }, [isTransporter, myC, myP, statuses]);
+
   if (!data && loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
@@ -138,7 +150,7 @@ function Portal() {
   };
 
   const openStatusModal = (key, val, label, isEmitida = false) => {
-    const confirmOnly = val === 'validado'; // validado só precisa de confirmação simples
+    const confirmOnly = val === 'validado';
     setStatusModal({ open: true, type: 'status', key, val, label, showDate: false, showNfFields: isEmitida, confirmOnly, batchKeys: [] });
   };
   const openTrackingModal = (key, val, label, hasDate = false, hasAttach = false) => {
@@ -185,7 +197,6 @@ function Portal() {
       if (statusModal.showNfFields && pdfFile) {
         pdfUrl = await uploadPdf(`${statusModal.key}_${nfDeb || 'nfdeb'}`, pdfFile);
       }
-      // Upload de comprovante para tracking com hasAttach
       if (statusModal.showAttach && pdfFile) {
         pdfUrl = await uploadPdf(`${statusModal.key}_${statusModal.val}_${Date.now()}`, pdfFile);
       }
@@ -272,12 +283,10 @@ function Portal() {
     setBatchStatusOpen(false);
   };
 
-  // ── Handler: clique em notificação → navega até a nota e abre linha do tempo ──
   const handleNotifClick = (notif) => {
     markRead(notif);
     setNotifOpen(false);
     if (!notif.nf_key) return;
-    // Descobrir se é cobrança (SO) ou devolução (TK)
     const allNotes = [...(data?.cobr || []), ...(data?.pend || [])];
     const note = allNotes.find(n => {
       const k = `${n.nfd || ''}|${n.nfo || ''}`;
@@ -285,13 +294,10 @@ function Portal() {
     });
     if (!note) return;
     const isCobr = (data?.cobr || []).includes(note);
-    // Navegar para a aba correta
     const destTab = isCobr ? 'cobranca' : 'lancamento';
     changeTab(destTab);
-    // Sinalizar ao NoteListView para abrir essa nota na aba timeline
     setPendingNoteOpen({ key: notif.nf_key, initialTab: 'timeline' });
   };
-  // ─────────────────────────────────────────────────────────────────────────
 
   const acceptanceHandler = {
     opened: acceptanceModal.opened,
@@ -336,6 +342,7 @@ function Portal() {
   };
 
   const renderContent = () => {
+    // ── Internal views ──────────────────────────────────────────
     if (tab === 'dashboard' && !isTransporter)     return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
     if (tab === 'dashboard_adv' && !isTransporter) return <DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} />;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
@@ -352,33 +359,33 @@ function Portal() {
         onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
       />
     );
-    if (tab === 'aging') return (
-      <Aging
-        pendNotes={myP} extras={extras}
-        onOpenFiltered={(value) => {
-          if (['expirado', 'proximo', 'ok'].includes(value))
-            return changeTab('lancamento', { agingCat: value, search: '', area: 'TODOS', status: 'todos', transporters: [] });
-          return changeTab('lancamento', { transporters: [value], search: '', area: 'TODOS', status: 'todos', agingCat: null });
-        }}
-      />
-    );
+    if (tab === 'aging') return <Aging pendNotes={myP} extras={extras} />;
     if (tab === 'auditoria') return <AuditLog audit={audit} />;
     if (tab === 'usuarios') return <UsuariosAdmin />;
+
+    // ── Transporter views — each with its own page + filters ────
     if (tab === 'tr_dash' && isTransporter) return (
       <TransportDash
         myC={myC} myP={myP} statuses={statuses}
         transporterName={transporterName}
-        extras={extras} history={history} user={user}
-        addChatMessage={addChatMessage}
-        onStatus={openStatusModal} onTracking={openTrackingModal}
-        onOpenEmail={openEmailForNotes}
-        onSetTransporter={handleSetTransporter}
-        transporterNames={trSummary.map(t => t.name)}
-        acceptanceHandler={acceptanceHandler}
-        permissions={permissions}
-        noteMeta={noteMeta} saveMeta={saveMeta} users={users}
+        extras={extras} onChangeTab={changeTab}
       />
     );
+    if (tab === 'tr_pendentes' && isTransporter) {
+      const pendDevol = myP.filter(n => ['retorno_auto', 'perdeu_agenda'].includes(getTracking(n, statuses)));
+      const pendCobr = myC.filter(n => getStatus(n, statuses) === 'cobr_tr');
+      return <TransportPendentes {...commonListProps} cobrNotes={myC} pendNotes={myP} notes={[...pendDevol, ...pendCobr]} />;
+    }
+    if (tab === 'tr_andamento' && isTransporter) return (
+      <TransportAndamento {...commonListProps} notes={myP} />
+    );
+    if (tab === 'tr_entregas' && isTransporter) return (
+      <TransportEntregas {...commonListProps} notes={myP} />
+    );
+    if (tab === 'tr_cobrancas' && isTransporter) return (
+      <TransportCobrancas {...commonListProps} notes={myC} />
+    );
+
     return null;
   };
 
@@ -386,11 +393,14 @@ function Portal() {
   const pageDesc = tab === 'cobranca' ? `${myC.length} registros`
     : tab === 'lancamento' ? `${myP.length} registros`
     : tab === 'acompanhamento' ? `${myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length} aguardando transportador`
+    : tab === 'tr_pendentes' ? `${trCounts.tr_pendentes || 0} aguardando sua ação`
+    : tab === 'tr_andamento' ? `${trCounts.tr_andamento || 0} em processo`
+    : tab === 'tr_entregas' ? `${trCounts.tr_entregas || 0} para entregar`
+    : tab === 'tr_cobrancas' ? `${trCounts.tr_cobrancas || 0} cobranças`
     : lastUpdated ? `Atualizado ${new Date(lastUpdated).toLocaleString('pt-BR')}${lastSource ? ` · ${lastSource}` : ''}` : '';
 
   return (
     <div className="app-layout">
-      {/* Sidebar */}
       <Sidebar
         tab={tab}
         onChangeTab={changeTab}
@@ -399,7 +409,12 @@ function Portal() {
           ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv')
             ? ['dashboard_adv'] : []),
         ]}
-        counts={{ cobranca: myC.length, lancamento: myP.length, acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length }}
+        counts={{
+          cobranca: myC.length,
+          lancamento: myP.length,
+          acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length,
+          ...trCounts,
+        }}
         user={user}
         onLogout={logout}
         isDark={isDark}
@@ -408,7 +423,6 @@ function Portal() {
       />
 
       <div className="app-main">
-        {/* Top bar */}
         <header className="topbar">
           <div style={{ flex: 1 }}>
             <div className="topbar-title">{pageTitle}</div>
@@ -441,7 +455,6 @@ function Portal() {
           </div>
         </header>
 
-        {/* Content */}
         <main className="app-content">
           {!data && !loading ? (
             <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-3)', fontSize: 14 }}>
@@ -474,7 +487,6 @@ function Portal() {
         onSent={handleEmailSent}
       />
 
-      {/* Edit transporter modal */}
       {editTransport.open && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditTransport({ open: false, note: null, value: '' })}>
           <div className="modal">
@@ -498,7 +510,6 @@ function Portal() {
         </div>
       )}
 
-      {/* Batch status modal */}
       {batchStatusOpen && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setBatchStatusOpen(false)}>
           <div className="modal" style={{ maxWidth: 400 }}>
