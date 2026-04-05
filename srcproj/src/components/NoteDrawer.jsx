@@ -30,7 +30,7 @@ function StatusDot({ color }) {
 export default function NoteDrawer({
   note, mode, onClose, statuses, extras, history, user, isTransporter,
   addChatMessage, onStatus, onTracking, onOpenEmail, onEditTransporter,
-  onSetTransporter, transporterNames = [],
+  onSetTransporter, transporterNames = [], onDirectStatus,
   onSaveAcceptance, acceptanceData, permissions, noteMeta, saveMeta, users,
   initialTab = 'info'
 }) {
@@ -289,19 +289,24 @@ export default function NoteDrawer({
                 </div>
               )}
 
-              <div className="drawer-section-title">Atualizar status</div>
-              <ProtectedAction allowed={!!tr && (mode === 'cobr' ? (isTransporter || permissions.canEditCobr) : permissions.canEditLanc || isTransporter)}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                  <StatusButtons
-                    mode={mode}
-                    isTransporter={isTransporter}
-                    currentValue={st}
-                    canTransporterAct={processInfo.transporterCanAct}
-                    onStatus={(val, label, isEmitida) => { onStatus(key, val, label, isEmitida); onClose(); }}
-                    onTracking={(val, label, hasDate, hasAttach) => { onTracking(key, val, label, hasDate, hasAttach); onClose(); }}
-                  />
-                </div>
-              </ProtectedAction>
+              {/* ── Status buttons: esconde para transportador em cobr_tr (aceite é a ação) ── */}
+              {!(isTransporter && mode === 'cobr' && st === 'cobr_tr') && (
+                <>
+                  <div className="drawer-section-title">Atualizar status</div>
+                  <ProtectedAction allowed={!!tr && (mode === 'cobr' ? (isTransporter || permissions.canEditCobr) : permissions.canEditLanc || isTransporter)}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                      <StatusButtons
+                        mode={mode}
+                        isTransporter={isTransporter}
+                        currentValue={st}
+                        canTransporterAct={processInfo.transporterCanAct}
+                        onStatus={(val, label, isEmitida) => { onStatus(key, val, label, isEmitida); onClose(); }}
+                        onTracking={(val, label, hasDate, hasAttach) => { onTracking(key, val, label, hasDate, hasAttach); onClose(); }}
+                      />
+                    </div>
+                  </ProtectedAction>
+                </>
+              )}
 
               {!isTransporter && permissions.canEmail && (
                 <div style={{ marginBottom: 16 }}>
@@ -312,8 +317,8 @@ export default function NoteDrawer({
                 </div>
               )}
 
-              {/* ── ACEITE FORMAL — Transportador na aba de cobranças ── */}
-              {isTransporter && mode === 'cobr' && (
+              {/* ── ACEITE FORMAL — Transportador SOMENTE quando status é cobr_tr ── */}
+              {isTransporter && mode === 'cobr' && st === 'cobr_tr' && (
                 <div style={{ marginTop: 16 }}>
                   <div className="drawer-section-title">Aceite / Contestação formal</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -429,13 +434,14 @@ export default function NoteDrawer({
               ts: aceiteData.created_at,
             });
           }
-          // Muda status automaticamente
+          // Muda status automaticamente SEM abrir modal
+          const statusFn = onDirectStatus || onStatus;
           if (aceiteData.tipo === 'concordancia') {
-            onStatus(key, 'tr_concordou', 'Transportador aprovou (aceite formal)', false);
+            await statusFn(key, 'tr_concordou', 'Aceite formal registrado');
           } else {
-            onStatus(key, 'tr_contestou', 'Transportador contestou (registro formal)', false);
+            await statusFn(key, 'tr_contestou', 'Contestação formal registrada');
           }
-        }}
+        }}}
       />
     </>
   );

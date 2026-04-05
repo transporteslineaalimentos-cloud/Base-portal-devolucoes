@@ -56,6 +56,7 @@ function buildNav(visibleTabs, counts = {}) {
     { id: 'tr_andamento',    label: 'Em andamento',        icon: icons.lancamento,    count: counts.tr_andamento },
     { id: 'tr_entregas',     label: 'Entregas',            icon: icons.package,       count: counts.tr_entregas },
     { id: 'tr_cobrancas',    label: 'Cobranças',           icon: icons.nfDebito,      count: counts.tr_cobrancas },
+    { id: 'tr_historico',    label: 'Todas as notas',      icon: icons.lancamento,    count: counts.tr_historico },
   ];
   return all.filter(i => visibleTabs.includes(i.id));
 }

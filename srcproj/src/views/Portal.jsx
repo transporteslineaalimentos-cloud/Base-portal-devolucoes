@@ -11,6 +11,7 @@ import TransportPendentes from './TransportPendentes';
 import TransportAndamento from './TransportAndamento';
 import TransportEntregas from './TransportEntregas';
 import TransportCobrancas from './TransportCobrancas';
+import TransportHistorico from './TransportHistorico';
 import NoteDrawer from '../components/NoteDrawer';
 import StatusModal from '../components/StatusModal';
 import EmailModal from '../components/EmailModal';
@@ -73,6 +74,7 @@ const PAGE_TITLES = {
   tr_andamento:     'Em Andamento',
   tr_entregas:      'Entregas',
   tr_cobrancas:     'Cobranças',
+  tr_historico:     'Todas as Notas',
 };
 
 function Portal() {
@@ -147,6 +149,7 @@ function Portal() {
       tr_andamento: myP.filter(n => ['ag_consolidacao', 'em_transito', 'recebida_filial', 'agend_solicitado'].includes(getTracking(n, statuses))).length,
       tr_entregas:  myP.filter(n => ['agend_confirmado', 'agendado'].includes(getTracking(n, statuses))).length,
       tr_cobrancas: myC.length,
+      tr_historico: myC.length + myP.length,
     };
   }, [isTransporter, myC, myP, statuses]);
 
@@ -337,6 +340,14 @@ function Portal() {
     await logAudit({ nfKey: noteKey, action: 'Transportador vinculado', field: 'transportador', oldValue: '', newValue: trName, origin: 'manual' });
   };
 
+  // Muda status diretamente SEM abrir modal (usado pelo aceite formal)
+  const directSetStatus = async (noteKey, val, obs = '') => {
+    const oldValue = statuses[noteKey]?.replace('st:', '') || 'pendente';
+    await setNoteStatus(noteKey, val, obs, user?.name, '', '', '', '');
+    await saveMeta(noteKey, getAutoMetaPatch('status', val, noteMeta[noteKey] || {}));
+    await logAudit({ nfKey: noteKey, action: 'Status', field: 'status', oldValue, newValue: val, obs, origin: 'aceite_formal' });
+  };
+
   const commonListProps = {
     filters, setFilters, extras, statuses, selected, setSelected,
     detailTab, setDetailTab, addChatMessage, user, isTransporter, history,
@@ -346,6 +357,7 @@ function Portal() {
     transporterNames: trSummary.map(t => t.name),
     acceptanceHandler, permissions, noteMeta, saveMeta, users,
     onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
+    onDirectStatus: directSetStatus,
     pendingNoteOpen, onPendingNoteConsumed: () => setPendingNoteOpen(null),
     exportButton: permissions.canExport ? (
       <button onClick={exportCurrentView} className="btn btn-outline btn-sm">⬇ Excel</button>
@@ -386,6 +398,7 @@ function Portal() {
     if (tab === 'tr_andamento' && isTransporter) return <TransportAndamento {...commonListProps} notes={myP} />;
     if (tab === 'tr_entregas' && isTransporter) return <TransportEntregas {...commonListProps} notes={myP} />;
     if (tab === 'tr_cobrancas' && isTransporter) return <TransportCobrancas {...commonListProps} notes={myC} />;
+    if (tab === 'tr_historico' && isTransporter) return <TransportHistorico {...commonListProps} notes={[...myP, ...myC]} />;
 
     return null;
   };
@@ -398,6 +411,7 @@ function Portal() {
     : tab === 'tr_andamento' ? `${trCounts.tr_andamento || 0} em processo`
     : tab === 'tr_entregas' ? `${trCounts.tr_entregas || 0} para entregar`
     : tab === 'tr_cobrancas' ? `${trCounts.tr_cobrancas || 0} cobranças`
+    : tab === 'tr_historico' ? `${trCounts.tr_historico || 0} notas no total`
     : lastUpdated ? `Atualizado ${new Date(lastUpdated).toLocaleString('pt-BR')}${lastSource ? ` · ${lastSource}` : ''}` : '';
 
   return (
