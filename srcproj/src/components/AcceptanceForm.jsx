@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fmt, esc } from '../utils/helpers';
-import { supabase } from '../config/supabase';
+import { supabase } from '../config/constants';
 
 /* ── helpers ──────────────────────────────────────────────────── */
 
