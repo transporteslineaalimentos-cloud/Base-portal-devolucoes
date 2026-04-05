@@ -441,7 +441,7 @@ export default function NoteDrawer({
           } else {
             await statusFn(key, 'tr_contestou', 'Contestação formal registrada');
           }
-        }}}
+        }}
       />
     </>
   );
