@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../config/constants';
+import { syncAuthToken } from '../config/supabase';
 import { fmt } from '../utils/helpers';
 
 /* ── Single acceptance card ──────────────────────────────────── */
@@ -57,7 +58,6 @@ function AceiteCard({ aceite, expanded, onToggle }) {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
               <div><span style={{ color: 'var(--text-3)' }}>Signatário:</span> <strong>{aceite.signatario_nome}</strong></div>
-              <div><span style={{ color: 'var(--text-3)' }}>CPF:</span> <strong>{aceite.signatario_cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</strong></div>
               <div><span style={{ color: 'var(--text-3)' }}>Cargo:</span> <strong>{aceite.signatario_cargo}</strong></div>
               <div><span style={{ color: 'var(--text-3)' }}>Email:</span> <strong>{aceite.signatario_email}</strong></div>
               <div><span style={{ color: 'var(--text-3)' }}>CNPJ:</span> <strong>{aceite.transportador_cnpj?.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')}</strong></div>
@@ -116,23 +116,46 @@ function AceiteCard({ aceite, expanded, onToggle }) {
 export function AceitesPanel({ nfKey }) {
   const [aceites, setAceites] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
     if (!nfKey) return;
     setLoading(true);
+    setError('');
+
+    // Sincroniza o token antes de consultar para garantir que a RLS permita a leitura
+    syncAuthToken();
+
     supabase
       .from('portal_aceites')
       .select('*')
       .eq('nf_key', nfKey)
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setAceites(data || []);
+      .then(({ data, error: dbErr }) => {
+        if (dbErr) {
+          console.error('[AceitesPanel]', dbErr.message);
+          setError(dbErr.message);
+        } else {
+          setAceites(data || []);
+        }
         setLoading(false);
       });
   }, [nfKey]);
 
-  if (loading) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>Carregando aceites...</div>;
+  if (loading) return (
+    <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+      Carregando aceites...
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ padding: 20, textAlign: 'center' }}>
+      <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>Erro ao carregar aceites</div>
+      <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'monospace' }}>{error}</div>
+    </div>
+  );
+
   if (!aceites.length) return (
     <div style={{ padding: '32px 20px', textAlign: 'center' }}>
       <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.5 }}>📋</div>
@@ -171,6 +194,8 @@ export function AceiteVerificacao() {
     setLoading(true);
     setError('');
     setResult(null);
+
+    syncAuthToken();
 
     const { data, error: dbErr } = await supabase
       .from('portal_aceites')

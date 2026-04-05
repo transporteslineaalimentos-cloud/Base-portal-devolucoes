@@ -11,60 +11,97 @@ import { processExcel } from '../utils/excel';
 
 const DataContext = createContext(null);
 
+// ── Chaves de cache no localStorage ─────────────────────────────
+const CACHE_KEY_DATA      = 'portal_cache_data';
+const CACHE_KEY_STATUSES  = 'portal_cache_statuses';
+const CACHE_KEY_EXTRAS    = 'portal_cache_extras';
+const CACHE_KEY_TRANSP    = 'portal_cache_transportadores';
+const CACHE_KEY_TS        = 'portal_cache_timestamp';
+// Cache expira após 10 minutos (evita dados muito velhos sem internet)
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+function readCache(key) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
+}
+function writeCache(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota exceeded – ignore */ }
+}
+function cacheIsStale() {
+  const ts = readCache(CACHE_KEY_TS);
+  if (!ts) return true;
+  return Date.now() - ts > CACHE_TTL_MS;
+}
+
 export function DataProvider({ children }) {
-  const [data, setData] = useState(null);
-  const [statuses, setStatuses] = useState({});
+  // Inicializa estado com cache instantâneo se disponível
+  const [data, setData] = useState(() => readCache(CACHE_KEY_DATA) || null);
+  const [statuses, setStatuses] = useState(() => readCache(CACHE_KEY_STATUSES) || {});
   const [history, setHistory] = useState([]);
-  const [extras, setExtras] = useState({});
-  const [transportadores, setTransportadores] = useState([]);  // nova tabela dedicada
-  const [kpiSnapshots, setKpiSnapshots] = useState([]);         // histórico mensal MoM
+  const [extras, setExtras] = useState(() => readCache(CACHE_KEY_EXTRAS) || {});
+  const [transportadores, setTransportadores] = useState(() => readCache(CACHE_KEY_TRANSP) || []);
+  const [kpiSnapshots, setKpiSnapshots] = useState([]);
   const [lastUpdated, setLastUpdated] = useState('');
   const [lastSource, setLastSource] = useState('');
-  const [loading, setLoading] = useState(false);
+  // loading=true somente quando não há cache (primeira vez)
+  const [loading, setLoading] = useState(() => !readCache(CACHE_KEY_DATA));
   const loadedRef = useRef(false);
 
   const loadAll = useCallback(async () => {
-    setLoading(true);
+    // Se já temos cache, só mostra loading=true na primeira vez absoluta
+    if (!loadedRef.current && !readCache(CACHE_KEY_DATA)) {
+      setLoading(true);
+    }
+
     try {
-      const [dbData, sts, hist, ext, trs, snaps] = await Promise.all([
-        dbLoad(), dbLoadStatuses(), dbLoadHistory(), dbLoadExtras(), dbLoadTransportadores(), dbLoadKpiSnapshots()
+      // Fase 1: carregar dados críticos em paralelo (sem histórico — mais lento)
+      const [dbData, sts, ext, trs] = await Promise.all([
+        dbLoad(), dbLoadStatuses(), dbLoadExtras(), dbLoadTransportadores()
       ]);
 
-      // Só atualiza data se veio algo válido — evita apagar dados existentes por falha de rede/token
       if (dbData?.data) {
         setData(dbData.data);
         setLastUpdated(dbData.updated_at || '');
+        writeCache(CACHE_KEY_DATA, dbData.data);
       }
-      // Statuses, history, extras e transportadores: só atualiza se retornou dados não-vazios
-      if (sts && Object.keys(sts).length > 0) setStatuses(sts);
-      if (hist && hist.length > 0) setHistory(hist);
-      if (ext  && Object.keys(ext).length > 0) setExtras(ext);
-      if (trs  && trs.length > 0) setTransportadores(trs);
-      if (snaps && snaps.length > 0) setKpiSnapshots(snaps);
+      if (sts && Object.keys(sts).length > 0) {
+        setStatuses(sts);
+        writeCache(CACHE_KEY_STATUSES, sts);
+      }
+      if (ext && Object.keys(ext).length > 0) {
+        setExtras(ext);
+        writeCache(CACHE_KEY_EXTRAS, ext);
+      }
+      if (trs && trs.length > 0) {
+        setTransportadores(trs);
+        writeCache(CACHE_KEY_TRANSP, trs);
+      }
+      writeCache(CACHE_KEY_TS, Date.now());
 
       loadedRef.current = true;
+      setLoading(false);
 
-      // ── AUTO-REFRESH: detecta push do GitHub e atualiza base automaticamente ──
-      try {
-        const signal = await dbGetLastGithubSignal();
-        if (signal) {
-          const signalTime = new Date(signal.created_at).getTime();
-          const lastSync   = new Date(dbData?.updated_at || 0).getTime();
-          const planilhaModificada = signal.payload?.planilha_modificada !== false;
-          if (planilhaModificada && signalTime > lastSync) {
-            console.log('[AutoRefresh] Planilha atualizada no GitHub — sincronizando...');
-            // Roda em background sem bloquear o carregamento inicial
-            setTimeout(() => syncFromGitHub(true), 500);
-          }
+      // Fase 2: carregar dados secundários em background (não bloqueia UI)
+      Promise.all([dbLoadHistory(), dbLoadKpiSnapshots()]).then(([hist, snaps]) => {
+        if (hist && hist.length > 0) setHistory(hist);
+        if (snaps && snaps.length > 0) setKpiSnapshots(snaps);
+      }).catch(e => console.warn('[loadAll background]', e.message));
+
+      // ── AUTO-REFRESH: detecta push do GitHub em background ──
+      dbGetLastGithubSignal().then(signal => {
+        if (!signal) return;
+        const signalTime = new Date(signal.created_at).getTime();
+        const lastSync   = new Date(dbData?.updated_at || 0).getTime();
+        const planilhaModificada = signal.payload?.planilha_modificada !== false;
+        if (planilhaModificada && signalTime > lastSync) {
+          console.log('[AutoRefresh] Planilha atualizada no GitHub — sincronizando...');
+          syncFromGitHub(true);
         }
-      } catch (e) {
-        console.warn('[AutoRefresh]', e.message);
-      }
-      // ─────────────────────────────────────────────────────────────────────────
+      }).catch(() => {});
+
     } catch (e) {
       console.error('Load error:', e);
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   const syncFromGitHub = useCallback(async (silent = false) => {
@@ -76,6 +113,8 @@ export function DataProvider({ children }) {
       setData(newData);
       setLastUpdated(new Date().toISOString());
       setLastSource('GitHub');
+      writeCache(CACHE_KEY_DATA, newData);
+      writeCache(CACHE_KEY_TS, Date.now());
       await dbSave(newData);
       if (!silent) alert('Base atualizada do GitHub!');
     } catch (e) {
@@ -90,6 +129,8 @@ export function DataProvider({ children }) {
     setData(newData);
     setLastUpdated(new Date().toISOString());
     setLastSource('Manual');
+    writeCache(CACHE_KEY_DATA, newData);
+    writeCache(CACHE_KEY_TS, Date.now());
     await dbSave(newData);
   }, []);
 
@@ -97,16 +138,15 @@ export function DataProvider({ children }) {
     const oldVal = statuses[key] || 'pendente';
     const newStatuses = { ...statuses, [key]: 'st:' + value };
     setStatuses(newStatuses);
+    writeCache(CACHE_KEY_STATUSES, newStatuses);
     await dbSaveStatus(key, 'st:' + value);
 
     if (nfDeb || pdfUrl || pedido || valorNf) {
-      // Usar functional update para evitar stale closure nos extras
       let currentEx = {};
       setExtras(prev => {
         currentEx = typeof prev[key] === 'object' && prev[key] !== null ? prev[key] : {};
         return prev;
       });
-      // Aguardar um tick para currentEx ser preenchido
       await new Promise(r => setTimeout(r, 0));
       const ex = {
         ...currentEx,
@@ -115,7 +155,11 @@ export function DataProvider({ children }) {
         ...(pedido  ? { pedido }  : {}),
         ...(valorNf ? { valorNfCobrado: valorNf } : {}),
       };
-      setExtras(prev => ({ ...prev, [key]: ex }));
+      setExtras(prev => {
+        const next = { ...prev, [key]: ex };
+        writeCache(CACHE_KEY_EXTRAS, next);
+        return next;
+      });
       await dbSaveExtra(key, ex);
     }
 
@@ -132,7 +176,7 @@ export function DataProvider({ children }) {
     await dbAddHistory(entry);
     setHistory(prev => [entry, ...prev]);
 
-    // ── AUTO-NOTIFICAÇÃO: avisa transportador automaticamente quando cobr_tr ──
+    // ── AUTO-NOTIFICAÇÃO ──
     if (value === 'cobr_tr') {
       try {
         const allNotes = [...(data?.cobr || []), ...(data?.pend || [])];
@@ -150,7 +194,6 @@ export function DataProvider({ children }) {
         }
       } catch (e) { console.warn('[AutoNotify]', e.message); }
     }
-    // ──────────────────────────────────────────────────────────────────────────
 
     return entry;
   }, [statuses, extras, data]);
@@ -159,12 +202,16 @@ export function DataProvider({ children }) {
     const oldVal = statuses[key] || 'tk:aguardando';
     const newStatuses = { ...statuses, [key]: 'tk:' + value };
     setStatuses(newStatuses);
+    writeCache(CACHE_KEY_STATUSES, newStatuses);
     await dbSaveStatus(key, 'tk:' + value);
 
-    // Salvar comprovante no extras vinculado ao status específico
     if (pdfUrl) {
       const ex = { ...(extras[key] || {}), [`pdfUrl_${value}`]: pdfUrl };
-      setExtras(prev => ({ ...prev, [key]: ex }));
+      setExtras(prev => {
+        const next = { ...prev, [key]: ex };
+        writeCache(CACHE_KEY_EXTRAS, next);
+        return next;
+      });
       await dbSaveExtra(key, ex);
     }
 
@@ -184,16 +231,22 @@ export function DataProvider({ children }) {
   }, [statuses, extras]);
 
   const saveExtra = useCallback(async (key, value) => {
-    const newExtras = { ...extras, [key]: value };
-    setExtras(newExtras);
+    setExtras(prev => {
+      const next = { ...prev, [key]: value };
+      writeCache(CACHE_KEY_EXTRAS, next);
+      return next;
+    });
     await dbSaveExtra(key, value);
-  }, [extras]);
+  }, []);
 
   const patchExtra = useCallback(async (key, patch) => {
     const current = extras[key] || {};
     const next = { ...(typeof current === 'string' ? {} : current), ...patch };
-    const newExtras = { ...extras, [key]: next };
-    setExtras(newExtras);
+    setExtras(prev => {
+      const newExtras = { ...prev, [key]: next };
+      writeCache(CACHE_KEY_EXTRAS, newExtras);
+      return newExtras;
+    });
     await dbSaveExtra(key, next);
     return next;
   }, [extras]);
@@ -209,8 +262,11 @@ export function DataProvider({ children }) {
     }
     msgs.push({ msg, user, role, ts: new Date().toISOString() });
     const saved = { msgs };
-    const newExtras = { ...extras, [chatKey]: saved };
-    setExtras(newExtras);
+    setExtras(prev => {
+      const next = { ...prev, [chatKey]: saved };
+      writeCache(CACHE_KEY_EXTRAS, next);
+      return next;
+    });
     await dbSaveExtra(chatKey, saved);
   }, [extras]);
 
@@ -221,69 +277,71 @@ export function DataProvider({ children }) {
     try { return typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : v.msgs || []); } catch { return []; }
   }, [extras]);
 
-  // ── TRANSPORTADORES — nova tabela dedicada ───────────────────
-  // getTrEmails: lê da lista em memória (carregada no loadAll)
+  // ── TRANSPORTADORES ──────────────────────────────────────────
   const getTrEmails = useCallback((trName) => {
     if (!trName) return '';
-    // exact match
     const tr = transportadores.find(t => t.nome === trName);
     if (tr) return tr.emails || '';
-    // case-insensitive match
     const lower = trName.toLowerCase().trim();
     const tr2 = transportadores.find(t => (t.nome || '').toLowerCase().trim() === lower);
     if (tr2) return tr2.emails || '';
-    // partial match (name contains or is contained)
     const tr3 = transportadores.find(t => {
       const n = (t.nome || '').toLowerCase().trim();
       return n && (n.includes(lower) || lower.includes(n));
     });
     if (tr3) return tr3.emails || '';
-    // fallback: extras legados (migração)
     const k = 'tr_email:' + trName;
     const v = extras[k];
     return typeof v === 'string' ? v : (v?.emails || '');
   }, [transportadores, extras]);
 
-  // setTrEmails: salva na nova tabela E atualiza lista em memória
   const setTrEmails = useCallback(async (trName, emails) => {
     await dbSaveTransportador(trName, { emails });
     setTransportadores(prev => {
-      const exists = prev.find(t => t.nome === trName);
-      if (exists) return prev.map(t => t.nome === trName ? { ...t, emails } : t);
-      return [...prev, { nome: trName, emails }];
+      const next = prev.find(t => t.nome === trName)
+        ? prev.map(t => t.nome === trName ? { ...t, emails } : t)
+        : [...prev, { nome: trName, emails }];
+      writeCache(CACHE_KEY_TRANSP, next);
+      return next;
     });
   }, []);
 
-  // saveTransportador: salva todos os campos (nome, emails, telefone, contato, obs)
   const saveTransportador = useCallback(async (nome, fields) => {
     await dbSaveTransportador(nome, fields);
     setTransportadores(prev => {
-      const exists = prev.find(t => t.nome === nome);
-      if (exists) return prev.map(t => t.nome === nome ? { ...t, ...fields, nome } : t);
-      return [...prev, { nome, ...fields }];
+      const next = prev.find(t => t.nome === nome)
+        ? prev.map(t => t.nome === nome ? { ...t, ...fields, nome } : t)
+        : [...prev, { nome, ...fields }];
+      writeCache(CACHE_KEY_TRANSP, next);
+      return next;
     });
   }, []);
 
-  // ── REALTIME — recebe mudanças de outros usuários em tempo real ──────────
+  // ── REALTIME ─────────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase
       .channel('portal-realtime-data', { config: { broadcast: { self: false } } })
 
-      // Status atualizado por outro usuário → atualizar mapa local imediatamente
       .on('postgres_changes', { event: '*', schema: 'public', table: 'portal_statuses' }, (payload) => {
         if (payload.new?.key && payload.new?.status) {
-          setStatuses(prev => ({ ...prev, [payload.new.key]: payload.new.status }));
+          setStatuses(prev => {
+            const next = { ...prev, [payload.new.key]: payload.new.status };
+            writeCache(CACHE_KEY_STATUSES, next);
+            return next;
+          });
         }
       })
 
-      // Extras atualizados (transportador, CT-e, aceite) → mesclar com estado atual
       .on('postgres_changes', { event: '*', schema: 'public', table: 'portal_extras' }, (payload) => {
         if (payload.new?.key) {
-          setExtras(prev => ({ ...prev, [payload.new.key]: payload.new.value }));
+          setExtras(prev => {
+            const next = { ...prev, [payload.new.key]: payload.new.value };
+            writeCache(CACHE_KEY_EXTRAS, next);
+            return next;
+          });
         }
       })
 
-      // Novo evento na linha do tempo → adicionar ao histórico
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'portal_history' }, (payload) => {
         if (payload.new) {
           setHistory(prev => [payload.new, ...prev]);
@@ -292,7 +350,7 @@ export function DataProvider({ children }) {
 
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.info('[Realtime] Conectado — atualizações em tempo real ativas ✓');
+          console.info('[Realtime] Conectado ✓');
         } else if (status === 'CHANNEL_ERROR') {
           console.warn('[Realtime] Erro de conexão — tentando reconectar...');
         }
@@ -300,7 +358,6 @@ export function DataProvider({ children }) {
 
     return () => { supabase.removeChannel(channel); };
   }, []); // eslint-disable-line
-  // ────────────────────────────────────────────────────────────────────────
 
   return (
     <DataContext.Provider value={{

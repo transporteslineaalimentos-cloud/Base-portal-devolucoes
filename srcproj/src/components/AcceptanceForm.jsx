@@ -4,26 +4,6 @@ import { supabase } from '../config/constants';
 
 /* ── helpers ──────────────────────────────────────────────────── */
 
-function formatCpf(v) {
-  const d = v.replace(/\D/g, '').slice(0, 11);
-  if (d.length <= 3) return d;
-  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
-  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
-
-function validCpf(cpf) {
-  const d = cpf.replace(/\D/g, '');
-  if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
-  for (let t = 9; t < 11; t++) {
-    let sum = 0;
-    for (let i = 0; i < t; i++) sum += parseInt(d[i]) * (t + 1 - i);
-    const r = (sum * 10) % 11;
-    if ((r === 10 ? 0 : r) !== parseInt(d[t])) return false;
-  }
-  return true;
-}
-
 function formatCnpj(v) {
   const d = v.replace(/\D/g, '').slice(0, 14);
   if (d.length <= 2) return d;
@@ -42,7 +22,6 @@ async function sha256(text) {
 
 async function generateCodigo() {
   const year = new Date().getFullYear();
-  // Get next sequence value
   const { data } = await supabase.rpc('nextval_aceite');
   const seq = data || Math.floor(Math.random() * 99999);
   return `ACE-${year}-${String(seq).padStart(5, '0')}`;
@@ -133,21 +112,20 @@ export default function AcceptanceForm({
   nfKey,
   notes = [],
   transporterName = '',
-  tipo = 'concordancia', // concordancia | contestacao
+  tipo = 'concordancia',
   onClose,
   onSaved,
   user,
 }) {
-  const [step, setStep] = useState(0); // 0=identificação, 1=termo, 2=confirmação
+  const [step, setStep] = useState(0);
   const [nome, setNome] = useState('');
-  const [cpf, setCpf] = useState('');
   const [cargo, setCargo] = useState('');
   const [email, setEmail] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [obs, setObs] = useState('');
   const [aceito, setAceito] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(null); // { codigo, hash }
+  const [success, setSuccess] = useState(null);
   const [error, setError] = useState('');
 
   const STEPS = ['Identificação', 'Termo', 'Confirmação'];
@@ -194,7 +172,6 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
     if (open) {
       setStep(0);
       setNome('');
-      setCpf('');
       setCargo('');
       setEmail('');
       setCnpj('');
@@ -210,7 +187,6 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
 
   const validateStep0 = () => {
     if (!nome.trim()) return 'Preencha o nome completo.';
-    if (!validCpf(cpf)) return 'CPF inválido.';
     if (!cargo.trim()) return 'Preencha o cargo.';
     if (!email.trim() || !email.includes('@')) return 'Preencha um email válido.';
     if (cnpj.replace(/\D/g, '').length < 14) return 'CNPJ inválido (14 dígitos).';
@@ -243,7 +219,7 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
       const hashInput = JSON.stringify({
         termo: termoTexto,
         notas: notes.map(n => ({ nfd: n.nfd, nfo: n.nfo, cl: n.cl, v: n.v })),
-        signatario: { nome, cpf: cpf.replace(/\D/g, ''), cargo, email },
+        signatario: { nome, cargo, email },
         transportador: { nome: transporterName, cnpj: cnpj.replace(/\D/g, '') },
         tipo,
         valor: valorTotal,
@@ -270,7 +246,6 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
         transportador_nome: transporterName,
         transportador_cnpj: cnpj.replace(/\D/g, ''),
         signatario_nome: nome,
-        signatario_cpf: cpf.replace(/\D/g, ''),
         signatario_cargo: cargo,
         signatario_email: email,
         termo_texto: termoTexto,
@@ -294,10 +269,9 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
             to: [email, 'transporte@lineaalimentos.com.br'],
             cc: [],
             subject: `${tipo === 'concordancia' ? 'Aceite' : 'Contestação'} Formal — ${codigo} — ${transporterName}`,
-            html: buildConfirmationEmail({ codigo, hash, nome, cpf, cargo, email, cnpj, transporterName, notes, valorTotal, tipo, termoTexto, ipAddress }),
+            html: buildConfirmationEmail({ codigo, hash, nome, cargo, email, cnpj, transporterName, notes, valorTotal, tipo, termoTexto, ipAddress }),
           }),
         });
-        // Mark email as sent
         await supabase.from('portal_aceites').update({ email_enviado: true }).eq('codigo', codigo);
       } catch { /* email failure is non-blocking */ }
 
@@ -307,7 +281,6 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
         hash,
         tipo,
         nome,
-        cpf: cpf.replace(/\D/g, ''),
         cargo,
         email,
         cnpj: cnpj.replace(/\D/g, ''),
@@ -370,23 +343,20 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
               </div>
 
               <div>
-                <label className="input-label">Nome completo do signatário <span style={{ color: 'var(--red)' }}>*</span></label>
+                <label className="input-label">Nome completo do representante <span style={{ color: 'var(--red)' }}>*</span></label>
                 <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo" className="input" />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="input-label">CPF <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <input value={cpf} onChange={e => setCpf(formatCpf(e.target.value))} placeholder="000.000.000-00" className="input" maxLength={14} />
-                </div>
-                <div>
-                  <label className="input-label">Cargo <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <input value={cargo} onChange={e => setCargo(e.target.value)} placeholder="Ex: Gerente comercial" className="input" />
-                </div>
-              </div>
+
               <div>
-                <label className="input-label">Email do signatário <span style={{ color: 'var(--red)' }}>*</span></label>
+                <label className="input-label">Cargo <span style={{ color: 'var(--red)' }}>*</span></label>
+                <input value={cargo} onChange={e => setCargo(e.target.value)} placeholder="Ex: Gerente comercial" className="input" />
+              </div>
+
+              <div>
+                <label className="input-label">Email do representante <span style={{ color: 'var(--red)' }}>*</span></label>
                 <input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@transportadora.com.br" className="input" type="email" />
               </div>
+
               <div>
                 <label className="input-label">CNPJ da transportadora <span style={{ color: 'var(--red)' }}>*</span></label>
                 <input value={cnpj} onChange={e => setCnpj(formatCnpj(e.target.value))} placeholder="00.000.000/0000-00" className="input" maxLength={18} />
@@ -449,17 +419,16 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
           {/* ── STEP 2: Confirmação ──────────────────────────── */}
           {step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Resumo do signatário */}
+              {/* Resumo do representante */}
               <div style={{
                 background: 'var(--surface-2)', border: '1px solid var(--border)',
                 borderRadius: 10, padding: 16,
               }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-                  Dados do signatário
+                  Dados do representante
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
-                  <div><span style={{ color: 'var(--text-3)' }}>Nome:</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{nome}</span></div>
-                  <div><span style={{ color: 'var(--text-3)' }}>CPF:</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{cpf}</span></div>
+                  <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--text-3)' }}>Nome:</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{nome}</span></div>
                   <div><span style={{ color: 'var(--text-3)' }}>Cargo:</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{cargo}</span></div>
                   <div><span style={{ color: 'var(--text-3)' }}>Email:</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{email}</span></div>
                   <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--text-3)' }}>CNPJ:</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{cnpj}</span></div>
@@ -476,8 +445,8 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.7 }}>
                   {tipo === 'concordancia'
-                    ? <>Eu, <strong>{nome}</strong>, CPF <strong>{cpf}</strong>, na qualidade de <strong>{cargo}</strong> da empresa <strong>{transporterName}</strong> (CNPJ {cnpj}), declaro que <span style={{ color: '#3FB950', fontWeight: 700 }}>RECONHEÇO E CONCORDO</span> com o débito de <strong style={{ color: 'var(--gold)' }}>{fmt(valorTotal)}</strong> referente a {notes.length} nota(s) fiscal(is) de devolução.</>
-                    : <>Eu, <strong>{nome}</strong>, CPF <strong>{cpf}</strong>, na qualidade de <strong>{cargo}</strong> da empresa <strong>{transporterName}</strong> (CNPJ {cnpj}), declaro que <span style={{ color: '#F85149', fontWeight: 700 }}>CONTESTO</span> o débito de <strong style={{ color: 'var(--gold)' }}>{fmt(valorTotal)}</strong>.</>
+                    ? <>Eu, <strong>{nome}</strong>, na qualidade de <strong>{cargo}</strong> da empresa <strong>{transporterName}</strong> (CNPJ {cnpj}), declaro que <span style={{ color: '#3FB950', fontWeight: 700 }}>RECONHEÇO E CONCORDO</span> com o débito de <strong style={{ color: 'var(--gold)' }}>{fmt(valorTotal)}</strong> referente a {notes.length} nota(s) fiscal(is) de devolução.</>
+                    : <>Eu, <strong>{nome}</strong>, na qualidade de <strong>{cargo}</strong> da empresa <strong>{transporterName}</strong> (CNPJ {cnpj}), declaro que <span style={{ color: '#F85149', fontWeight: 700 }}>CONTESTO</span> o débito de <strong style={{ color: 'var(--gold)' }}>{fmt(valorTotal)}</strong>.</>
                   }
                 </div>
               </div>
@@ -558,7 +527,7 @@ Data e hora do aceite: ${new Date().toLocaleString('pt-BR', { timeZone: 'America
 }
 
 /* ── Email HTML builder ──────────────────────────────────────── */
-function buildConfirmationEmail({ codigo, hash, nome, cpf, cargo, email, cnpj, transporterName, notes, valorTotal, tipo, termoTexto, ipAddress }) {
+function buildConfirmationEmail({ codigo, hash, nome, cargo, email, cnpj, transporterName, notes, valorTotal, tipo, termoTexto, ipAddress }) {
   const tipoLabel = tipo === 'concordancia' ? 'Concordância' : 'Contestação';
   const rows = notes.map(n => `
     <tr>
@@ -591,8 +560,7 @@ function buildConfirmationEmail({ codigo, hash, nome, cpf, cargo, email, cnpj, t
         <table style="width:100%;font-size:13px;margin-bottom:20px">
           <tr><td style="padding:4px 0;color:#6b7280;width:140px">Transportadora:</td><td style="font-weight:600">${esc(transporterName)}</td></tr>
           <tr><td style="padding:4px 0;color:#6b7280">CNPJ:</td><td style="font-weight:600">${esc(cnpj)}</td></tr>
-          <tr><td style="padding:4px 0;color:#6b7280">Signatário:</td><td style="font-weight:600">${esc(nome)}</td></tr>
-          <tr><td style="padding:4px 0;color:#6b7280">CPF:</td><td style="font-weight:600">${esc(cpf)}</td></tr>
+          <tr><td style="padding:4px 0;color:#6b7280">Representante:</td><td style="font-weight:600">${esc(nome)}</td></tr>
           <tr><td style="padding:4px 0;color:#6b7280">Cargo:</td><td style="font-weight:600">${esc(cargo)}</td></tr>
           <tr><td style="padding:4px 0;color:#6b7280">Email:</td><td style="font-weight:600">${esc(email)}</td></tr>
           <tr><td style="padding:4px 0;color:#6b7280">Data/Hora:</td><td style="font-weight:600">${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td></tr>
