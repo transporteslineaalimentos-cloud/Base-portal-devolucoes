@@ -39,6 +39,11 @@ const UsuariosAdmin     = lazy(() => import('./UsuariosAdmin'));
 const Transportadores   = lazy(() => import('./Transportadores'));
 const NfsDebito         = lazy(() => import('./NfsDebito'));
 
+// ── Lazy-loaded aceite verification ──────────
+const AceiteVerificacaoLazy = lazy(() =>
+  import('../components/AceitesPanel').then(m => ({ default: m.AceiteVerificacao }))
+);
+
 function LazyFallback() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 24px' }}>
@@ -62,6 +67,7 @@ const PAGE_TITLES = {
   aging:            'Aging',
   auditoria:        'Auditoria',
   usuarios:         'Usuários',
+  verificacao:      'Verificar Aceites',
   tr_dash:          'Dashboard',
   tr_pendentes:     'Pendentes',
   tr_andamento:     'Em Andamento',
@@ -365,6 +371,7 @@ function Portal() {
     );
     if (tab === 'aging') return <Suspense fallback={<LazyFallback />}><Aging pendNotes={myP} extras={extras} /></Suspense>;
     if (tab === 'auditoria') return <Suspense fallback={<LazyFallback />}><AuditLog audit={audit} /></Suspense>;
+    if (tab === 'verificacao') return <Suspense fallback={<LazyFallback />}><AceiteVerificacaoLazy /></Suspense>;
     if (tab === 'usuarios') return <Suspense fallback={<LazyFallback />}><UsuariosAdmin /></Suspense>;
 
     // ── Transporter views ───────────────────────────────────────

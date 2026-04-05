@@ -42,6 +42,7 @@ function buildNav(visibleTabs, counts = {}) {
     // Cobranças (grupo)
     { id: 'cobranca',        label: 'Cobranças',           icon: icons.cobranca,      group: 'cobr', count: counts.cobranca },
     { id: 'nfDebito',        label: 'NFs Débito',          icon: icons.nfDebito,      group: 'cobr' },
+    { id: 'verificacao',     label: 'Verificar aceites',   icon: icons.auditoria,     group: 'cobr' },
     // Devoluções (grupo)
     { id: 'lancamento',      label: 'Todas as notas',      icon: icons.lancamento,    group: 'devol', count: counts.lancamento },
     { id: 'acompanhamento',  label: 'Em acompanhamento',   icon: icons.aging,         group: 'devol', count: counts.acompanhamento },

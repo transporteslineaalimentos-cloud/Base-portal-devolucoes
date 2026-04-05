@@ -7,6 +7,7 @@ import NoteTimeline from './NoteTimeline';
 import CtePanel from './CtePanel';
 import NoteMetaPanel from './NoteMetaPanel';
 import AcceptanceForm from './AcceptanceForm';
+import { AceitesPanel } from './AceitesPanel';
 import ProtectedAction from './ProtectedAction';
 import TrackingStepper from './TrackingStepper';
 
@@ -36,8 +37,8 @@ export default function NoteDrawer({
   const [activeTab, setActiveTab] = useState(initialTab || 'info');
   const [trSelect, setTrSelect] = useState('');
   const [savingTr, setSavingTr] = useState(false);
-  const [showAcceptanceModal, setShowAcceptanceModal] = useState(false);
-  const [showAcceptanceReadOnly, setShowAcceptanceReadOnly] = useState(false);
+  // New acceptance modal state
+  const [acceptanceModal, setAcceptanceModal] = useState({ open: false, tipo: 'concordancia' });
 
   if (!note) return null;
 
@@ -51,8 +52,6 @@ export default function NoteDrawer({
   const tr = getTransporter(note, extras);
   const ex = extras[key] || {};
   const exObj = typeof ex === 'object' ? ex : {};
-  const acceptanceKey = 'aceite:' + key;
-  const acceptance = acceptanceData?.[acceptanceKey] || extras[acceptanceKey];
   const noteHist = history.filter(h => h.nf_key === key).slice(0, 20);
   const meta = noteMeta?.[key] || {};
   const processInfo = deriveWorkflow(mode, st, meta);
@@ -63,6 +62,7 @@ export default function NoteDrawer({
     { id: 'timeline', label: `Linha do tempo${noteHist.length > 0 ? ` (${noteHist.length})` : ''}` },
     { id: 'cte',      label: 'CT-e' },
     { id: 'chat',     label: `Chat${chat.length > 0 ? ` (${chat.length})` : ''}` },
+    ...(mode === 'cobr' ? [{ id: 'aceites', label: '📋 Aceites' }] : []),
     ...(!isTransporter ? [{ id: 'meta', label: 'Gestão' }] : []),
   ];
 
@@ -86,11 +86,6 @@ export default function NoteDrawer({
               <span className={note.t === 'P' ? 'tag tag-parcial' : 'tag tag-total'}>
                 {note.t === 'P' ? 'PARCIAL' : 'TOTAL'}
               </span>
-              {acceptance?.accepted && (
-                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid rgba(63,185,80,0.2)' }}>
-                  Aceite ✓
-                </span>
-              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -317,53 +312,61 @@ export default function NoteDrawer({
                 </div>
               )}
 
+              {/* ── ACEITE FORMAL — Transportador na aba de cobranças ── */}
               {isTransporter && mode === 'cobr' && (
                 <div style={{ marginTop: 16 }}>
                   <div className="drawer-section-title">Aceite / Contestação formal</div>
-                  {acceptance?.accepted ? (
-                    // já fez aceite — mostrar confirmação e botão ver
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--green-dim)', border: '1px solid rgba(63,185,80,.25)', borderRadius: 8 }}>
-                      <span style={{ fontSize: 14 }}>✅</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)' }}>Aceite já formalizado</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{acceptance.name} · {new Date(acceptance.ts).toLocaleDateString('pt-BR')}</div>
-                      </div>
-                      <button
-                        className="btn btn-outline btn-xs"
-                        onClick={() => setShowAcceptanceReadOnly(true)}
-                      >Ver dados</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5, marginBottom: 4 }}>
+                      Você recebeu uma solicitação de posição sobre esta cobrança. Selecione sua resposta:
                     </div>
-                  ) : (
-                    // ainda não fez aceite — mostrar os botões de ação
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5, marginBottom: 4 }}>
-                        Você recebeu uma solicitação de posição sobre esta cobrança. Selecione sua resposta:
-                      </div>
-                      <button
-                        className="btn btn-gold"
-                        style={{ width: '100%', justifyContent: 'center' }}
-                        onClick={() => setShowAcceptanceModal(true)}
-                      >
-                        ✅ Concordo — formalizar aceite
-                      </button>
-                      <button
-                        className="btn btn-outline"
-                        style={{ width: '100%', justifyContent: 'center', color: 'var(--red)', borderColor: 'var(--red)' }}
-                        onClick={() => { onStatus(key, 'tr_contestou', 'Transportador contestou', false); onClose(); }}
-                      >
-                        ❌ Contesto esta cobrança
-                      </button>
-                      <button
-                        className="btn btn-outline"
-                        style={{ width: '100%', justifyContent: 'center' }}
-                        onClick={() => { onStatus(key, 'tr_nao_resp', 'Transportador não responsável', false); onClose(); }}
-                      >
-                        ⚠ Não somos responsáveis
-                      </button>
-                    </div>
-                  )}
+                    <button
+                      className="btn btn-gold"
+                      style={{ width: '100%', justifyContent: 'center' }}
+                      onClick={() => setAcceptanceModal({ open: true, tipo: 'concordancia' })}
+                    >
+                      ✅ Concordo — formalizar aceite
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      style={{ width: '100%', justifyContent: 'center', color: '#F85149', borderColor: '#F8514940' }}
+                      onClick={() => setAcceptanceModal({ open: true, tipo: 'contestacao' })}
+                    >
+                      ❌ Contesto — registrar contestação formal
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      style={{ width: '100%', justifyContent: 'center' }}
+                      onClick={() => { onStatus(key, 'tr_nao_resp', 'Transportador não responsável', false); onClose(); }}
+                    >
+                      ⚠ Não somos responsáveis
+                    </button>
+                  </div>
                 </div>
               )}
+
+              {/* ── ACEITE FORMAL — Interno pode ver aceites e gerar para transportador ── */}
+              {!isTransporter && mode === 'cobr' && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="drawer-section-title">Aceite formal do transportador</div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      style={{ flex: 1, justifyContent: 'center' }}
+                      onClick={() => setActiveTab('aceites')}
+                    >
+                      📋 Ver aceites registrados
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── TAB: ACEITES FORMAIS ── */}
+          {activeTab === 'aceites' && (
+            <div style={{ padding: '0 4px' }}>
+              <AceitesPanel nfKey={key} />
             </div>
           )}
 
@@ -405,32 +408,35 @@ export default function NoteDrawer({
         </div>
       </div>
 
-      {/* ── Modal de aceite formal (abre só quando transportador clica em Concordo) ── */}
-      {showAcceptanceModal && (
-        <AcceptanceForm
-          open={showAcceptanceModal}
-          onClose={() => setShowAcceptanceModal(false)}
-          onSave={async (data) => {
-            await onSaveAcceptance.save(key, data);
-            // Após aceite, mudar status para tr_concordou automaticamente
-            onStatus(key, 'tr_concordou', 'Transportador aprovou', false);
-            setShowAcceptanceModal(false);
-            onClose();
-          }}
-          existing={null}
-        />
-      )}
-
-      {/* ── Modal readonly para ver dados do aceite já registrado ── */}
-      {showAcceptanceReadOnly && (
-        <AcceptanceForm
-          open={showAcceptanceReadOnly}
-          onClose={() => setShowAcceptanceReadOnly(false)}
-          onSave={() => {}}
-          existing={acceptance}
-          readOnly
-        />
-      )}
+      {/* ── Modal de aceite formal (novo sistema com CPF, hash, etc.) ── */}
+      <AcceptanceForm
+        open={acceptanceModal.open}
+        nfKey={key}
+        notes={[note]}
+        transporterName={tr || ''}
+        tipo={acceptanceModal.tipo}
+        user={user}
+        onClose={() => setAcceptanceModal({ open: false, tipo: 'concordancia' })}
+        onSaved={async (aceiteData) => {
+          // Salva referência no extras legado (compatibilidade)
+          if (onSaveAcceptance?.save) {
+            await onSaveAcceptance.save(key, {
+              accepted: aceiteData.tipo === 'concordancia',
+              codigo: aceiteData.codigo,
+              name: aceiteData.nome,
+              cpf: aceiteData.cpf,
+              email: aceiteData.email,
+              ts: aceiteData.created_at,
+            });
+          }
+          // Muda status automaticamente
+          if (aceiteData.tipo === 'concordancia') {
+            onStatus(key, 'tr_concordou', 'Transportador aprovou (aceite formal)', false);
+          } else {
+            onStatus(key, 'tr_contestou', 'Transportador contestou (registro formal)', false);
+          }
+        }}
+      />
     </>
   );
 }
