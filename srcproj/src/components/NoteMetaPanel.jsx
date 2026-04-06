@@ -1,6 +1,5 @@
 export default function NoteMetaPanel({ noteKey, meta = {}, onSave }) {
   const patch = (field, value) => onSave(noteKey, { ...meta, [field]: value });
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
@@ -14,19 +13,7 @@ export default function NoteMetaPanel({ noteKey, meta = {}, onSave }) {
             }[p];
             const isActive = meta.prioridade === p;
             return (
-              <button
-                key={p}
-                onClick={() => patch('prioridade', p)}
-                className="btn btn-sm"
-                style={{
-                  flex: 1,
-                  justifyContent: 'center',
-                  background:   isActive ? colors.active  : 'transparent',
-                  borderColor:  isActive ? colors.border  : 'var(--border)',
-                  color:        isActive ? colors.text     : 'var(--text-2)',
-                  fontWeight:   isActive ? 700 : 400,
-                }}
-              >
+              <button key={p} onClick={() => patch('prioridade', p)} className="btn btn-sm" style={{ flex: 1, justifyContent: 'center', background: isActive ? colors.active : 'transparent', borderColor: isActive ? colors.border : 'var(--border)', color: isActive ? colors.text : 'var(--text-2)', fontWeight: isActive ? 700 : 400 }}>
                 {p.charAt(0).toUpperCase() + p.slice(1)}
               </button>
             );

@@ -1,8 +1,6 @@
 import { supabase, SB_URL, SB_KEY } from './constants';
 
 // ── Sincroniza o token do localStorage com o cliente Supabase ──────────────
-// Chamada antes de qualquer query que exija autenticação.
-// Sem isso, o cliente usa apenas a anon key e operações autenticadas falham.
 export function syncAuthToken() {
   try {
     const token   = localStorage.getItem('sb_token');
@@ -18,7 +16,6 @@ async function safeQuery(promise, fallback = null) {
   try {
     const { data, error } = await promise;
     if (error) {
-      // Token expirado: tenta refresh automático
       if (error.message?.includes('JWT') || error.code === 'PGRST301' || error.status === 401) {
         console.warn('[Auth] Token expirado — tentando refresh automático...');
         await autoRefreshToken();
@@ -34,7 +31,6 @@ async function safeQuery(promise, fallback = null) {
   }
 }
 
-// Refresh automático chamado quando token expira durante uma query
 async function autoRefreshToken() {
   try {
     const refresh = localStorage.getItem('sb_refresh');
@@ -80,9 +76,16 @@ export async function dbSaveStatus(key, status) {
   await safeQuery(supabase.from('portal_statuses').upsert({ key, status }), null);
 }
 
+// ── Histórico limitado a 400 registros mais recentes para evitar payload enorme ──
 export async function dbLoadHistory() {
   syncAuthToken();
-  return await safeQuery(supabase.from('portal_history').select('*').order('created_at', { ascending: false }), []);
+  return await safeQuery(
+    supabase.from('portal_history')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(400),
+    []
+  );
 }
 
 export async function dbAddHistory(entry) {
@@ -208,8 +211,6 @@ export async function dbLoadSla() {
   return map;
 }
 
-
-// ─── KPI SNAPSHOTS ──────────────────────────────────
 export async function dbLoadKpiSnapshots() {
   return await safeQuery(
     supabase.from('portal_kpi_snapshots').select('*').order('mes', { ascending: false }).limit(12),
@@ -217,7 +218,6 @@ export async function dbLoadKpiSnapshots() {
   );
 }
 
-// ─── CONFIGURAÇÕES DO PORTAL ────────────────────────
 export async function dbLoadConfig() {
   const data = await safeQuery(supabase.from('portal_config').select('*'), []);
   const map = {};
@@ -228,7 +228,6 @@ export async function dbSaveConfig(key, value) {
   await safeQuery(supabase.from('portal_config').upsert({ key, value, updated_at: new Date().toISOString() }), null);
 }
 
-// ─── SIGNALS (webhook GitHub → auto-refresh) ────────
 export async function dbGetLastGithubSignal() {
   return await safeQuery(
     supabase.from('portal_signals')
@@ -241,8 +240,6 @@ export async function dbGetLastGithubSignal() {
   );
 }
 
-// ─── AUTO-NOTIFICAÇÃO AO TRANSPORTADOR ──────────────
-// Chamada quando status muda para cobr_tr
 export async function notifyTransporter({ nf_key, tr_emails, tr_name, valor, motivo, nfd, nfo, cliente }) {
   if (!tr_emails) return;
   try {
@@ -298,7 +295,6 @@ export async function adminDeleteUser(userId) {
   return await adminUsersRequest('DELETE', { userId });
 }
 
-// ─── TRANSPORTADORES (tabela dedicada) ──────────────────────────
 export async function dbLoadTransportadores() {
   syncAuthToken();
   const data = await safeQuery(supabase.from('portal_transportadores').select('*').order('nome'), []);
@@ -325,7 +321,6 @@ export async function dbGetTransportadorEmails(nome) {
   return data?.emails || '';
 }
 
-// ─── ACTIVE ONSUPPLY — CT-e vinculado a uma nota ────────────────
 export async function dbGetCteForNote(nfKey) {
   syncAuthToken();
   const data = await safeQuery(

@@ -1,20 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from '../hooks/useAuth.jsx';
 import { DataProvider, useData } from '../hooks/useData.jsx';
 import Login from './Login';
 import Dashboard from './Dashboard';
-import DashboardAvancado from './DashboardAvancado';
 import PendCobranca from './PendCobranca';
 import PendLancamento from './PendLancamento';
 import Acompanhamento from './Acompanhamento';
-import NfsDebito from './NfsDebito';
-import Transportadores from './Transportadores';
-import Aging from './Aging';
-import ProtheusSync from './ProtheusSync';
-import RiscoTransportadores from './RiscoTransportadores';
 import TransportDash from './TransportDash';
-import AuditLog from './AuditLog';
-import UsuariosAdmin from './UsuariosAdmin';
+import TransportPendentes from './TransportPendentes';
+import TransportAndamento from './TransportAndamento';
+import TransportEntregas from './TransportEntregas';
+import TransportCobrancas from './TransportCobrancas';
+import TransportHistorico from './TransportHistorico';
+import NoteDrawer from '../components/NoteDrawer';
 import StatusModal from '../components/StatusModal';
 import EmailModal from '../components/EmailModal';
 import NotificationBell from '../components/NotificationBell';
@@ -30,9 +28,32 @@ import { generateNotification } from '../utils/notification';
 import {
   filterNotes, getVisibleCobranca, getVisibleLancamento, getTransporter,
   getNoteKey, groupByNfDeb, summarizeTransporters, toExportRows,
-  calcAging, transporterCanSee, getTracking
+  calcAging, transporterCanSee, getTracking, getStatus
 } from '../utils/helpers';
 import { useTheme } from '../hooks/useTheme.jsx';
+
+// ── Lazy-loaded heavy views (Recharts, tables, charts) ──────────
+const DashboardAvancado = lazy(() => import('./DashboardAvancado'));
+const Aging             = lazy(() => import('./Aging'));
+const AuditLog          = lazy(() => import('./AuditLog'));
+const UsuariosAdmin     = lazy(() => import('./UsuariosAdmin'));
+const Transportadores   = lazy(() => import('./Transportadores'));
+const NfsDebito         = lazy(() => import('./NfsDebito'));
+
+// ── Lazy-loaded aceite verification ──────────
+const AceiteVerificacaoLazy = lazy(() =>
+  import('../components/AceitesPanel').then(m => ({ default: m.AceiteVerificacao }))
+);
+
+function LazyFallback() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 24px' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
+        Carregando...
+      </div>
+    </div>
+  );
+}
 
 const DEFAULT_FILTERS = { search: '', area: 'TODOS', status: 'todos', transporters: [], agingCat: null };
 
@@ -40,18 +61,20 @@ const PAGE_TITLES = {
   dashboard:        'Dashboard',
   dashboard_adv:    'Dashboard Executivo',
   cobranca:         'Gestão de Cobranças',
-  lancamento:     'Todas as Devoluções',
-  acompanhamento: 'Em Acompanhamento (Transportador)',
-  nfDebito:       'NFs Débito',
-  transportadores:'Por Transportador',
-  aging:          'Aging',
-  auditoria:      'Auditoria',
-  risco:          'Score de Risco por Transportadora',
-  protheus_sync:  'Integração Protheus',
-  usuarios:       'Usuários',
-  tr_dash:        'Dashboard',
-  tr_retorno:     'Devoluções',
-  tr_cobranca:    'Cobranças',
+  lancamento:       'Todas as Devoluções',
+  acompanhamento:   'Em Acompanhamento (Transportador)',
+  nfDebito:         'NFs Débito',
+  transportadores:  'Por Transportador',
+  aging:            'Aging',
+  auditoria:        'Auditoria',
+  usuarios:         'Usuários',
+  verificacao:      'Verificar Aceites',
+  tr_dash:          'Dashboard',
+  tr_pendentes:     'Pendentes',
+  tr_andamento:     'Em Andamento',
+  tr_entregas:      'Entregas',
+  tr_cobrancas:     'Cobranças',
+  tr_historico:     'Todas as Notas',
 };
 
 function Portal() {
@@ -81,14 +104,11 @@ function Portal() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [batchStatusOpen, setBatchStatusOpen] = useState(false);
   const [batchStatusValue, setBatchStatusValue] = useState('validado');
+  const [pendingNoteOpen, setPendingNoteOpen] = useState(null);
 
   useEffect(() => {
     loadAll();
-    // Auto-reload silencioso a cada 5 minutos para manter dados atualizados
-    // e renovar a sessão com o Supabase preventivamente
-    const interval = setInterval(() => {
-      loadAll();
-    }, 5 * 60 * 1000);
+    const interval = setInterval(() => { loadAll(); }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line
 
@@ -102,24 +122,58 @@ function Portal() {
   const baseC = applyNoteFilter(getVisibleCobranca(safeData, statuses));
   const baseP = applyNoteFilter(getVisibleLancamento(safeData, statuses));
 
+  // ── Monta o conjunto de nomes (principal + aliases) deste transportador ──
+  // Comparação case-insensitive para tolerar variações de maiúsculas/minúsculas.
+  const trAliasSet = useMemo(() => {
+    if (!isTransporter || !transporterName) return new Set();
+    const canonical = transporterName.toLowerCase().trim();
+    const trData = transportadores.find(t =>
+      (t.nome || '').toLowerCase().trim() === canonical
+    );
+    const aliases = Array.isArray(trData?.aliases)
+      ? trData.aliases.map(a => a.toLowerCase().trim()).filter(Boolean)
+      : [];
+    return new Set([canonical, ...aliases]);
+  }, [isTransporter, transporterName, transportadores]);
+
+  // Helper para checar se uma nota pertence a este transportador (nome OU alias)
+  const noteIsMineTr = useCallback((note) => {
+    if (!isTransporter) return true;
+    const tr = (getTransporter(note, extras) || '').toLowerCase().trim();
+    return trAliasSet.has(tr);
+  }, [isTransporter, trAliasSet, extras]);
+
   const myC = isTransporter
     ? baseC.filter(d => {
-        const tr = getTransporter(d, extras) || '';
+        if (!noteIsMineTr(d)) return false;
         const st = statuses[getNoteKey(d)]?.replace('st:', '') || 'pendente';
-        return tr === transporterName && transporterCanSee('cobr', st);
+        return transporterCanSee('cobr', st);
       })
     : baseC;
+
   const myP = isTransporter
     ? baseP.filter(d => {
-        const tr = getTransporter(d, extras) || '';
+        if (!noteIsMineTr(d)) return false;
         const tk = statuses[getNoteKey(d)]?.replace('tk:', '') || 'aguardando';
-        return tr === transporterName && transporterCanSee('pend', tk);
+        return transporterCanSee('pend', tk);
       })
     : baseP;
 
   const users = useMemo(() => [...new Set(history.map(h => h.user_name).filter(Boolean))], [history]);
   const nfGroups = useMemo(() => groupByNfDeb(myC, extras, history), [myC, extras, history]);
   const trSummary = useMemo(() => summarizeTransporters([...myC, ...myP], extras), [myC, myP, extras]);
+
+  const trCounts = useMemo(() => {
+    if (!isTransporter) return {};
+    return {
+      tr_pendentes: myC.filter(n => getStatus(n, statuses) === 'cobr_tr').length
+                  + myP.filter(n => ['retorno_auto', 'perdeu_agenda'].includes(getTracking(n, statuses))).length,
+      tr_andamento: myP.filter(n => ['ag_consolidacao', 'em_transito', 'recebida_filial', 'agend_solicitado'].includes(getTracking(n, statuses))).length,
+      tr_entregas:  myP.filter(n => ['agend_confirmado', 'agendado'].includes(getTracking(n, statuses))).length,
+      tr_cobrancas: myC.length,
+      tr_historico: myC.length + myP.length,
+    };
+  }, [isTransporter, myC, myP, statuses]);
 
   if (!data && loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
@@ -138,10 +192,11 @@ function Portal() {
   };
 
   const openStatusModal = (key, val, label, isEmitida = false) => {
-    setStatusModal({ open: true, type: 'status', key, val, label, showDate: false, showNfFields: isEmitida, batchKeys: [] });
+    const confirmOnly = val === 'validado';
+    setStatusModal({ open: true, type: 'status', key, val, label, showDate: false, showNfFields: isEmitida, confirmOnly, batchKeys: [] });
   };
-  const openTrackingModal = (key, val, label, hasDate = false) => {
-    setStatusModal({ open: true, type: 'tracking', key, val, label, showDate: hasDate, showNfFields: false, batchKeys: [] });
+  const openTrackingModal = (key, val, label, hasDate = false, hasAttach = false) => {
+    setStatusModal({ open: true, type: 'tracking', key, val, label, showDate: hasDate, showAttach: hasAttach, showNfFields: false, batchKeys: [] });
   };
   const closeStatusModal = () => setStatusModal(prev => ({ ...prev, open: false }));
 
@@ -177,12 +232,15 @@ function Portal() {
     return { ...currentMeta, ...(map[value] || {}) };
   };
 
-  const confirmStatusModal = async ({ obs, date, nfDeb, pedido, pdfFile }) => {
+  const confirmStatusModal = async ({ obs, date, nfDeb, pedido, valorNf, pdfFile }) => {
     setStatusLoading(true);
     try {
       let pdfUrl = '';
       if (statusModal.showNfFields && pdfFile) {
         pdfUrl = await uploadPdf(`${statusModal.key}_${nfDeb || 'nfdeb'}`, pdfFile);
+      }
+      if (statusModal.showAttach && pdfFile) {
+        pdfUrl = await uploadPdf(`${statusModal.key}_${statusModal.val}_${Date.now()}`, pdfFile);
       }
       const keys = statusModal.batchKeys?.length ? statusModal.batchKeys : [statusModal.key];
       for (const key of keys) {
@@ -190,11 +248,11 @@ function Portal() {
           ? (statuses[key]?.replace('st:', '') || 'pendente')
           : (statuses[key]?.replace('tk:', '') || 'aguardando');
         if (statusModal.type === 'status') {
-          await setNoteStatus(key, statusModal.val, obs || '', user?.name, nfDeb || '', pdfUrl || '', pedido || '');
+          await setNoteStatus(key, statusModal.val, obs || '', user?.name, nfDeb || '', pdfUrl || '', pedido || '', valorNf || '');
           await saveMeta(key, getAutoMetaPatch('status', statusModal.val, noteMeta[key] || {}));
           await logAudit({ nfKey: key, action: 'Status', field: 'status', oldValue, newValue: statusModal.val, obs, origin: statusModal.batchKeys?.length ? 'batch' : 'manual' });
         } else {
-          await setNoteTracking(key, statusModal.val, obs || '', user?.name, date || '');
+          await setNoteTracking(key, statusModal.val, obs || '', user?.name, date || '', pdfUrl || '');
           await saveMeta(key, getAutoMetaPatch('tracking', statusModal.val, noteMeta[key] || {}));
           await logAudit({ nfKey: key, action: 'Tracking', field: 'tracking', oldValue, newValue: statusModal.val, obs, origin: statusModal.batchKeys?.length ? 'batch' : 'manual' });
         }
@@ -225,9 +283,9 @@ function Portal() {
   };
 
   const exportCurrentView = () => {
-    if (tab === 'cobranca' || tab === 'tr_cobranca') {
+    if (tab === 'cobranca') {
       exportToExcel(toExportRows(filterNotes(myC, filters, statuses, 'cobr', extras), statuses, extras, 'cobr', noteMeta), 'cobranca');
-    } else if (tab === 'lancamento' || tab === 'tr_retorno') {
+    } else if (tab === 'lancamento') {
       exportToExcel(toExportRows(filterNotes(myP, filters, statuses, 'pend', extras), statuses, extras, 'pend', noteMeta), 'lancamento');
     } else if (tab === 'acompanhamento') {
       const acompNotes = myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses)));
@@ -267,6 +325,18 @@ function Portal() {
     setBatchStatusOpen(false);
   };
 
+  const handleNotifClick = (notif) => {
+    markRead(notif);
+    setNotifOpen(false);
+    if (!notif.nf_key) return;
+    const allNotes = [...(data?.cobr || []), ...(data?.pend || [])];
+    const note = allNotes.find(n => `${n.nfd || ''}|${n.nfo || ''}` === notif.nf_key);
+    if (!note) return;
+    const isCobr = (data?.cobr || []).includes(note);
+    changeTab(isCobr ? 'cobranca' : 'lancamento');
+    setPendingNoteOpen({ key: notif.nf_key, initialTab: 'timeline' });
+  };
+
   const acceptanceHandler = {
     opened: acceptanceModal.opened,
     key: acceptanceModal.key,
@@ -292,6 +362,13 @@ function Portal() {
     await logAudit({ nfKey: noteKey, action: 'Transportador vinculado', field: 'transportador', oldValue: '', newValue: trName, origin: 'manual' });
   };
 
+  const directSetStatus = async (noteKey, val, obs = '') => {
+    const oldValue = statuses[noteKey]?.replace('st:', '') || 'pendente';
+    await setNoteStatus(noteKey, val, obs, user?.name, '', '', '', '');
+    await saveMeta(noteKey, getAutoMetaPatch('status', val, noteMeta[noteKey] || {}));
+    await logAudit({ nfKey: noteKey, action: 'Status', field: 'status', oldValue, newValue: val, obs, origin: 'aceite_formal' });
+  };
+
   const commonListProps = {
     filters, setFilters, extras, statuses, selected, setSelected,
     detailTab, setDetailTab, addChatMessage, user, isTransporter, history,
@@ -301,47 +378,47 @@ function Portal() {
     transporterNames: trSummary.map(t => t.name),
     acceptanceHandler, permissions, noteMeta, saveMeta, users,
     onBatchGenerate: handleBatchGenerate, onBatchEmail: handleBatchEmail, onBatchStatus: handleBatchStatus,
+    onDirectStatus: directSetStatus,
+    pendingNoteOpen, onPendingNoteConsumed: () => setPendingNoteOpen(null),
     exportButton: permissions.canExport ? (
-      <button onClick={exportCurrentView} className="btn btn-outline btn-sm">
-        ⬇ Excel
-      </button>
+      <button onClick={exportCurrentView} className="btn btn-outline btn-sm">⬇ Excel</button>
     ) : null,
   };
 
   const renderContent = () => {
-    if (tab === 'dashboard' && !isTransporter)     return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
-    if (tab === 'dashboard_adv' && !isTransporter) return <DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} />;
+    if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
+    if (tab === 'dashboard_adv' && !isTransporter) return <Suspense fallback={<LazyFallback />}><DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} /></Suspense>;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
     if (tab === 'lancamento') return <PendLancamento {...commonListProps} notes={myP} />;
     if (tab === 'acompanhamento') return <Acompanhamento {...commonListProps} notes={myP} />;
-    if (tab === 'nfDebito') return <NfsDebito groups={nfGroups} />;
+    if (tab === 'nfDebito') return <Suspense fallback={<LazyFallback />}><NfsDebito groups={nfGroups} /></Suspense>;
     if (tab === 'transportadores') return (
-      <Transportadores
-        summary={trSummary}
-        getEmails={getTrEmails}
-        setEmails={setTrEmails}
-        transportadores={transportadores}
-        saveTransportador={saveTransportador}
-        onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
-      />
+      <Suspense fallback={<LazyFallback />}>
+        <Transportadores
+          summary={trSummary} getEmails={getTrEmails} setEmails={setTrEmails}
+          transportadores={transportadores} saveTransportador={saveTransportador}
+          onOpenFiltered={(trName, mode) => changeTab(mode === 'cobr' ? 'cobranca' : 'lancamento', { transporters: [trName], search: '', area: 'TODOS', status: 'todos', agingCat: null })}
+        />
+      </Suspense>
     );
-    if (tab === 'aging') return (
-      <Aging
-        pendNotes={myP} extras={extras}
-        onOpenFiltered={(value) => {
-          if (['expirado', 'proximo', 'ok'].includes(value))
-            return changeTab('lancamento', { agingCat: value, search: '', area: 'TODOS', status: 'todos', transporters: [] });
-          return changeTab('lancamento', { transporters: [value], search: '', area: 'TODOS', status: 'todos', agingCat: null });
-        }}
-      />
+    if (tab === 'aging') return <Suspense fallback={<LazyFallback />}><Aging pendNotes={myP} extras={extras} /></Suspense>;
+    if (tab === 'auditoria') return <Suspense fallback={<LazyFallback />}><AuditLog audit={audit} /></Suspense>;
+    if (tab === 'verificacao') return <Suspense fallback={<LazyFallback />}><AceiteVerificacaoLazy /></Suspense>;
+    if (tab === 'usuarios') return <Suspense fallback={<LazyFallback />}><UsuariosAdmin /></Suspense>;
+
+    if (tab === 'tr_dash' && isTransporter) return (
+      <TransportDash myC={myC} myP={myP} statuses={statuses} transporterName={transporterName} extras={extras} onChangeTab={changeTab} />
     );
-    if (tab === 'risco') return <RiscoTransportadores />;
-    if (tab === 'auditoria') return <AuditLog audit={audit} />;
-    if (tab === 'protheus_sync') return <ProtheusSync />;
-    if (tab === 'usuarios') return <UsuariosAdmin />;
-    if (tab === 'tr_dash' && isTransporter) return <TransportDash myC={myC} myP={myP} statuses={statuses} onOpenTab={changeTab} transporterName={transporterName} onOpenNote={(n) => { setDrawerNote(n); setDrawerMode(n.t === 'P' ? 'pend' : 'cobr'); }} />;
-    if (tab === 'tr_retorno' && isTransporter) return <PendLancamento {...commonListProps} notes={myP} />;
-    if (tab === 'tr_cobranca' && isTransporter) return <PendCobranca {...commonListProps} notes={myC} />;
+    if (tab === 'tr_pendentes' && isTransporter) {
+      const pendDevol = myP.filter(n => ['retorno_auto', 'perdeu_agenda'].includes(getTracking(n, statuses)));
+      const pendCobr = myC.filter(n => getStatus(n, statuses) === 'cobr_tr');
+      return <TransportPendentes {...commonListProps} cobrNotes={myC} pendNotes={myP} notes={[...pendDevol, ...pendCobr]} />;
+    }
+    if (tab === 'tr_andamento' && isTransporter) return <TransportAndamento {...commonListProps} notes={myP} />;
+    if (tab === 'tr_entregas' && isTransporter) return <TransportEntregas {...commonListProps} notes={myP} />;
+    if (tab === 'tr_cobrancas' && isTransporter) return <TransportCobrancas {...commonListProps} notes={myC} />;
+    if (tab === 'tr_historico' && isTransporter) return <TransportHistorico {...commonListProps} notes={[...myP, ...myC]} />;
+
     return null;
   };
 
@@ -349,70 +426,55 @@ function Portal() {
   const pageDesc = tab === 'cobranca' ? `${myC.length} registros`
     : tab === 'lancamento' ? `${myP.length} registros`
     : tab === 'acompanhamento' ? `${myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length} aguardando transportador`
+    : tab === 'tr_pendentes' ? `${trCounts.tr_pendentes || 0} aguardando sua ação`
+    : tab === 'tr_andamento' ? `${trCounts.tr_andamento || 0} em processo`
+    : tab === 'tr_entregas' ? `${trCounts.tr_entregas || 0} para entregar`
+    : tab === 'tr_cobrancas' ? `${trCounts.tr_cobrancas || 0} cobranças`
+    : tab === 'tr_historico' ? `${trCounts.tr_historico || 0} notas no total`
     : lastUpdated ? `Atualizado ${new Date(lastUpdated).toLocaleString('pt-BR')}${lastSource ? ` · ${lastSource}` : ''}` : '';
 
   return (
     <div className="app-layout">
-      {/* Sidebar */}
       <Sidebar
         tab={tab}
         onChangeTab={changeTab}
         visibleTabs={[
           ...permissions.visibleTabs,
-          ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv')
-            ? ['dashboard_adv'] : []),
+          ...(!isTransporter && permissions.visibleTabs.includes('dashboard') && !permissions.visibleTabs.includes('dashboard_adv') ? ['dashboard_adv'] : []),
         ]}
-        counts={{ cobranca: myC.length, lancamento: myP.length, acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length }}
-        user={user}
-        onLogout={logout}
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
-        isTransporter={isTransporter}
+        counts={{
+          cobranca: myC.length, lancamento: myP.length,
+          acompanhamento: myP.filter(n => TK_TRANSP_TRACKING.includes(getTracking(n, statuses))).length,
+          ...trCounts,
+        }}
+        user={user} onLogout={logout} isDark={isDark} onToggleTheme={toggleTheme} isTransporter={isTransporter}
       />
 
       <div className="app-main">
-        {/* Top bar */}
         <header className="topbar">
           <div style={{ flex: 1 }}>
             <div className="topbar-title">{pageTitle}</div>
             {pageDesc && <div className="topbar-sub">{pageDesc}</div>}
           </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {!isTransporter && permissions.canImport && (
-              <button onClick={() => syncFromGitHub(false)} className="btn btn-outline btn-sm">
-                🔄 Atualizar
-              </button>
+              <button onClick={() => syncFromGitHub(false)} className="btn btn-outline btn-sm">🔄 Atualizar</button>
             )}
             {permissions.canExport && (
-              <button onClick={exportComplete} className="btn btn-gold btn-sm">
-                ⬇ Excel completo
-              </button>
+              <button onClick={exportComplete} className="btn btn-gold btn-sm">⬇ Excel completo</button>
             )}
-            <div style={{ position: 'relative' }}>
-              <NotificationBell
-                items={notifications}
-                open={notifOpen}
-                onToggle={() => setNotifOpen(v => !v)}
-                onRead={(n) => { markRead(n); setNotifOpen(false); }}
-              />
-            </div>
+            <NotificationBell items={notifications} open={notifOpen} onToggle={() => setNotifOpen(v => !v)} onRead={handleNotifClick} />
             <div style={{ height: 28, width: 1, background: 'var(--border)', margin: '0 4px' }} />
-            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
-              {user?.name || user?.email}
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{user?.name || user?.email}</div>
           </div>
         </header>
 
-        {/* Content */}
         <main className="app-content">
           {!data && !loading ? (
             <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-3)', fontSize: 14 }}>
               Sem dados carregados. Clique em "Atualizar" para buscar do GitHub.
             </div>
-          ) : (
-            renderContent()
-          )}
+          ) : renderContent()}
         </main>
       </div>
 
@@ -420,22 +482,16 @@ function Portal() {
       <StatusModal
         open={statusModal.open}
         title={statusModal.type === 'status' ? `Atualizar status: ${statusModal.label}` : `Atualizar tracking: ${statusModal.label}`}
-        showDate={statusModal.showDate}
-        showNfFields={statusModal.showNfFields}
-        onClose={closeStatusModal}
-        onConfirm={confirmStatusModal}
-        loading={statusLoading}
+        showDate={statusModal.showDate} showNfFields={statusModal.showNfFields}
+        confirmOnly={statusModal.confirmOnly} showAttach={statusModal.showAttach}
+        onClose={closeStatusModal} onConfirm={confirmStatusModal} loading={statusLoading}
       />
       <EmailModal
-        open={emailModal.open}
-        notes={emailModal.notes}
-        transporterName={emailModal.transporterName}
+        open={emailModal.open} notes={emailModal.notes} transporterName={emailModal.transporterName}
         defaultTo={emailModal.defaultTo}
         onClose={() => setEmailModal({ open: false, notes: [], transporterName: '', defaultTo: '' })}
         onSent={handleEmailSent}
       />
-
-      {/* Edit transporter modal */}
       {editTransport.open && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditTransport({ open: false, note: null, value: '' })}>
           <div className="modal">
@@ -444,12 +500,7 @@ function Portal() {
               <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{editTransport.note?.cl}</p>
             </div>
             <div className="modal-body">
-              <input
-                value={editTransport.value}
-                onChange={e => setEditTransport(prev => ({ ...prev, value: e.target.value }))}
-                placeholder="Nome do transportador"
-                className="input"
-              />
+              <input value={editTransport.value} onChange={e => setEditTransport(prev => ({ ...prev, value: e.target.value }))} placeholder="Nome do transportador" className="input" />
             </div>
             <div className="modal-footer">
               <button onClick={() => setEditTransport({ open: false, note: null, value: '' })} className="btn btn-outline">Cancelar</button>
@@ -458,14 +509,12 @@ function Portal() {
           </div>
         </div>
       )}
-
-      {/* Batch status modal */}
       {batchStatusOpen && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setBatchStatusOpen(false)}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Mudar status em lote</h2>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{selected.size} registro(s) selecionado(s)</p>
+              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{selected.size} registro(s)</p>
             </div>
             <div className="modal-body">
               <label className="input-label">Novo status</label>
@@ -493,9 +542,7 @@ function AppRouter() {
   const { user, loading, needsPwChange } = useAuth();
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>
-        Conectando...
-      </div>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 24px', fontSize: 13, color: 'var(--text-3)' }}>Conectando...</div>
     </div>
   );
   if (!user || needsPwChange) return <Login />;
