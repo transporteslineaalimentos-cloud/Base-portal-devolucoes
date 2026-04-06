@@ -1,5 +1,5 @@
-const SB_URL = 'https://opcrtjdnpgqcjlksofjw.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wY3J0amRucGdxY2psa3NvZmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NTMwODYsImV4cCI6MjA5MDAyOTA4Nn0.ojJMzaInCSD4mrZEWrU1d9ziDVyIcp7NRm6RHx2uTGA';
+const SB_URL = process.env.SUPABASE_URL;
+const SB_KEY = process.env.SUPABASE_ANON_KEY;
 
 async function sbInsert(table, payload) {
   const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
       Erro: false, Informacao_Complementar: {},
     })));
   } catch (err) {
-    try { await sbInsert('active_webhooks', { tipo: 'nota_fiscal_erro', source: 'active_onsupply', payload_raw: req.body || "empty", observacao: err.message }); } catch {}
+    try { await sbInsert('active_webhooks', { tipo: 'nota_fiscal_erro', source: 'active_onsupply', payload_raw: req.body || 'empty', observacao: err.message }); } catch {}
     return res.status(200).json([{ Guid_Processamento: `error-${Date.now()}`, Chave_Cliente: 'LINEA_PORTAL', Inicio_Processamento: new Date().toISOString(), Termino_Processamento: new Date().toISOString(), Tempo_Processamento: '00:00:00.000', Codigo: '999', Mensagem: `Erro: ${err.message}`, Linha: 1, Tipo_Documento: 'Nota Fiscal', Referencia: '', Campo_Relacionado: '', Erro: true, Informacao_Complementar: {} }]);
   }
 }

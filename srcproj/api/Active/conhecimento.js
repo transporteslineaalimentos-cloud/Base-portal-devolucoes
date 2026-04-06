@@ -1,5 +1,5 @@
-const SB_URL = 'https://opcrtjdnpgqcjlksofjw.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wY3J0amRucGdxY2psa3NvZmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NTMwODYsImV4cCI6MjA5MDAyOTA4Nn0.ojJMzaInCSD4mrZEWrU1d9ziDVyIcp7NRm6RHx2uTGA';
+const SB_URL = process.env.SUPABASE_URL;
+const SB_KEY = process.env.SUPABASE_ANON_KEY;
 
 async function sbInsert(table, payload) {
   const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
@@ -25,7 +25,6 @@ function gn(obj, ...keys) {
 }
 
 function extractCTes(body) {
-  /* Active sends: { "CTe": [ {...}, ... ] } */
   if (body && body.CTe && Array.isArray(body.CTe)) return body.CTe;
   if (body && body.Conhecimento && Array.isArray(body.Conhecimento)) return body.Conhecimento;
   if (Array.isArray(body)) return body;
@@ -44,13 +43,6 @@ export default async function handler(req, res) {
     const results = [];
 
     for (const item of items) {
-      /* Active CTe structure:
-         DOCUMENTO: { NUMERO, SERIE, CHAVE, EMISSAO, OBSERVACAO }
-         PRESTACAO: { CFOP, TOTAL_FRETE, VALOR_PRESTACAO, IMPOSTO: { BASE, VALOR, ALIQUOTA } }
-         CARGA: { PESO, VOLUMES, VALOR, KM, M3 }
-         TRANSPORTADOR, REMETENTE, DESTINATARIO, PAGADOR
-         NOTAFISCAL: [ { NUMERO, SERIE, CHAVE, VALOR, PESO, VOLUMES } ]
-      */
       const doc = item.DOCUMENTO || {};
       const prest = item.PRESTACAO || {};
       const carga = item.CARGA || {};
