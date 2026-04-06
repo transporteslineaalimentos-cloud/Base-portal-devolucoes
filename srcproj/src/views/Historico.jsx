@@ -1,39 +1,26 @@
 import { useState } from 'react';
 import { fmtDateTime, translateStatusLabel } from '../utils/helpers';
 import { exportToExcel } from '../utils/excel';
-
 export default function Historico({ history = [] }) {
   const [search, setSearch] = useState('');
   let f = history;
   if (search) {
     const t = search.toLowerCase().split(';').map(v => v.trim()).filter(Boolean);
-    f = f.filter(h => t.some(q =>
-      (h.nf_key || '').toLowerCase().includes(q) ||
-      (h.user_name || '').toLowerCase().includes(q) ||
-      (h.action || '').toLowerCase().includes(q)
-    ));
+    f = f.filter(h => t.some(q => (h.nf_key||'').toLowerCase().includes(q) || (h.user_name||'').toLowerCase().includes(q) || (h.action||'').toLowerCase().includes(q)));
   }
-
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar nota, usuário, ação... (use ; para múltiplos)"
-            className="input" style={{ paddingLeft: 12 }} />
-        </div>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar nota, usuário, ação... (use ; para múltiplos)" className="input" style={{ flex: 1 }} />
         <button onClick={() => exportToExcel(f, 'historico')} className="btn btn-outline btn-sm">⬇ Excel</button>
       </div>
-
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                 {['Data/Hora', 'NFD', 'NFO', 'Ação', 'Status', 'Observação', 'Usuário'].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-                    {h}
-                  </th>
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>

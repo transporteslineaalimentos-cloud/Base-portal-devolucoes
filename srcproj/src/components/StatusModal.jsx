@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react';
 
-// Props:
-//   showNfFields  = true  → NF débito (nº NF, pedido, valor cobrado, PDF)
-//   confirmOnly   = true  → só confirmação (validado)
-//   showDate      = true  → campo de data simples (c/ obs)
-//   showAttach    = true  → data + comprovante obrigatório (sem obs) — agendamentos e entregue
-
 export default function StatusModal({ open, title, showDate = false, showNfFields = false, confirmOnly = false, showAttach = false, onClose, onConfirm, loading = false }) {
   const [obs, setObs]         = useState('');
   const [date, setDate]       = useState('');
@@ -26,7 +20,6 @@ export default function StatusModal({ open, title, showDate = false, showNfField
     onConfirm({ obs, date, nfDeb, pedido, valorNf, pdfFile });
   };
 
-  // ── Modo confirmação simples (validado) ──────────────────────
   if (confirmOnly) {
     return (
       <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -46,19 +39,14 @@ export default function StatusModal({ open, title, showDate = false, showNfField
     );
   }
 
-  // ── Modo data + comprovante (em_transito, agend_solicitado, agend_confirmado, entregue) ──
   if (showAttach) {
-    // em_transito tem hasDate mas não hasAttach — só data, sem comprovante
-    // Detectamos isso pelo título: se o título não mencionar agendamento/entregue, é só data
     const isDateOnly = !title.toLowerCase().includes('agendamento') && !title.toLowerCase().includes('entregue');
     return (
       <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="modal" style={{ maxWidth: 420 }}>
           <div className="modal-header">
             <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
-            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>
-              {isDateOnly ? 'Informe a data prevista.' : 'Informe a data e anexe o comprovante.'}
-            </p>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>{isDateOnly ? 'Informe a data prevista.' : 'Informe a data e anexe o comprovante.'}</p>
           </div>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
@@ -70,12 +58,7 @@ export default function StatusModal({ open, title, showDate = false, showNfField
                  'Data da entrega'}
                 <span style={{ color: 'var(--red)' }}> *</span>
               </label>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="input"
-              />
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input" />
             </div>
             {!isDateOnly && (
               <div>
@@ -85,28 +68,19 @@ export default function StatusModal({ open, title, showDate = false, showNfField
                    'Comprovante de entrega'}
                   <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> (opcional)</span>
                 </label>
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                  className="input"
-                  style={{ cursor: 'pointer' }}
-                />
+                <input type="file" accept="application/pdf,image/*" onChange={e => setPdfFile(e.target.files?.[0] || null)} className="input" style={{ cursor: 'pointer' }} />
               </div>
             )}
           </div>
           <div className="modal-footer">
             <button onClick={onClose} className="btn btn-outline">Cancelar</button>
-            <button disabled={loading} onClick={handleConfirm} className="btn btn-gold">
-              {loading ? 'Salvando...' : 'Confirmar'}
-            </button>
+            <button disabled={loading} onClick={handleConfirm} className="btn btn-gold">{loading ? 'Salvando...' : 'Confirmar'}</button>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── Modo completo (padrão) ───────────────────────────────────
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -114,32 +88,17 @@ export default function StatusModal({ open, title, showDate = false, showNfField
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
           <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>Preencha os dados e confirme a alteração.</p>
         </div>
-
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label className="input-label">Observação <span style={{ color: 'var(--text-3)' }}>(opcional)</span></label>
-            <textarea
-              value={obs}
-              onChange={e => setObs(e.target.value)}
-              rows={3}
-              placeholder="Adicione uma observação..."
-              className="input"
-            />
+            <textarea value={obs} onChange={e => setObs(e.target.value)} rows={3} placeholder="Adicione uma observação..." className="input" />
           </div>
-
           {showDate && (
             <div>
               <label className="input-label">Data</label>
-              <input
-                type="text"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                placeholder="dd/mm/aaaa"
-                className="input"
-              />
+              <input type="text" value={date} onChange={e => setDate(e.target.value)} placeholder="dd/mm/aaaa" className="input" />
             </div>
           )}
-
           {showNfFields && (
             <>
               <div>
@@ -151,39 +110,20 @@ export default function StatusModal({ open, title, showDate = false, showNfField
                 <input type="text" value={pedido} onChange={e => setPedido(e.target.value)} placeholder="Número do pedido Protheus" className="input" />
               </div>
               <div>
-                <label className="input-label">
-                  Valor cobrado na NF <span style={{ color: 'var(--text-3)' }}>(opcional — informe se for cobrança parcial)</span>
-                </label>
-                <input
-                  type="text"
-                  value={valorNf}
-                  onChange={e => setValorNf(e.target.value.replace(/[^\d.,]/g, ''))}
-                  placeholder="Ex: 1.250,00"
-                  className="input"
-                />
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
-                  Deixe vazio se o valor cobrado for o total da nota fiscal
-                </div>
+                <label className="input-label">Valor cobrado na NF <span style={{ color: 'var(--text-3)' }}>(opcional — informe se for cobrança parcial)</span></label>
+                <input type="text" value={valorNf} onChange={e => setValorNf(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="Ex: 1.250,00" className="input" />
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Deixe vazio se o valor cobrado for o total da nota fiscal</div>
               </div>
               <div>
                 <label className="input-label">PDF da NF Débito <span style={{ color: 'var(--text-3)' }}>(opcional)</span></label>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                  className="input"
-                  style={{ cursor: 'pointer' }}
-                />
+                <input type="file" accept="application/pdf" onChange={e => setPdfFile(e.target.files?.[0] || null)} className="input" style={{ cursor: 'pointer' }} />
               </div>
             </>
           )}
         </div>
-
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-outline">Cancelar</button>
-          <button disabled={loading} onClick={handleConfirm} className="btn btn-gold">
-            {loading ? 'Salvando...' : 'Confirmar'}
-          </button>
+          <button disabled={loading} onClick={handleConfirm} className="btn btn-gold">{loading ? 'Salvando...' : 'Confirmar'}</button>
         </div>
       </div>
     </div>

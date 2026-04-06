@@ -29,28 +29,19 @@ const icons = {
   package:       'M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12',
 };
 
-const ANALISES_TABS = ['dashboard', 'dashboard_adv', 'aging'];
-const COBR_TABS = ['cobranca', 'nfDebito'];
-const DEVOL_TABS = ['lancamento', 'acompanhamento'];
-
 function buildNav(visibleTabs, counts = {}) {
   const all = [
-    // Análises (grupo)
     { id: 'dashboard',       label: 'Dashboard',           icon: icons.dashboard,     group: 'analises' },
     { id: 'dashboard_adv',   label: 'Executivo',           icon: icons.dashboard_adv, group: 'analises' },
     { id: 'aging',           label: 'Aging',               icon: icons.aging,         group: 'analises' },
-    // Cobranças (grupo)
     { id: 'cobranca',        label: 'Cobranças',           icon: icons.cobranca,      group: 'cobr', count: counts.cobranca },
     { id: 'nfDebito',        label: 'NFs Débito',          icon: icons.nfDebito,      group: 'cobr' },
     { id: 'verificacao',     label: 'Verificar aceites',   icon: icons.auditoria,     group: 'cobr' },
-    // Devoluções (grupo)
     { id: 'lancamento',      label: 'Todas as notas',      icon: icons.lancamento,    group: 'devol', count: counts.lancamento },
     { id: 'acompanhamento',  label: 'Em acompanhamento',   icon: icons.aging,         group: 'devol', count: counts.acompanhamento },
-    // Standalone
     { id: 'transportadores', label: 'Transportadores',     icon: icons.transportador },
     { id: 'auditoria',       label: 'Auditoria',           icon: icons.auditoria },
     { id: 'usuarios',        label: 'Usuários',            icon: icons.usuarios },
-    // Transportador — páginas separadas na sidebar
     { id: 'tr_dash',         label: 'Dashboard',           icon: icons.dashboard },
     { id: 'tr_pendentes',    label: 'Pendentes',           icon: icons.bell,          count: counts.tr_pendentes },
     { id: 'tr_andamento',    label: 'Em andamento',        icon: icons.lancamento,    count: counts.tr_andamento },
@@ -62,13 +53,12 @@ function buildNav(visibleTabs, counts = {}) {
 }
 
 export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {}, user, onLogout, isDark, onToggleTheme, isTransporter }) {
-  const [collapsed, setCollapsed]     = useState(false);
+  const [collapsed, setCollapsed]       = useState(false);
   const [analisesOpen, setAnalisesOpen] = useState(true);
-  const [cobrOpen, setCobrOpen]       = useState(true);
-  const [devolOpen, setDevolOpen]     = useState(true);
+  const [cobrOpen, setCobrOpen]         = useState(true);
+  const [devolOpen, setDevolOpen]       = useState(true);
 
   const navItems = buildNav(visibleTabs, counts);
-
   const analisesGroup = navItems.filter(i => i.group === 'analises');
   const cobrGroup     = navItems.filter(i => i.group === 'cobr');
   const devolGroup    = navItems.filter(i => i.group === 'devol');
@@ -77,19 +67,12 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
   const renderItem = (item, isChild = false) => {
     const active = tab === item.id;
     return (
-      <button
-        key={item.id}
-        onClick={() => onChangeTab(item.id)}
-        className={`nav-item ${isChild ? 'nav-item-sub' : ''} ${active ? 'active' : ''}`}
-        title={collapsed ? item.label : undefined}
-      >
+      <button key={item.id} onClick={() => onChangeTab(item.id)} className={`nav-item ${isChild ? 'nav-item-sub' : ''} ${active ? 'active' : ''}`} title={collapsed ? item.label : undefined}>
         <Icon d={item.icon} size={16} className="nav-icon" />
         {!collapsed && (
           <>
             <span className="nav-label">{item.label}</span>
-            {item.count != null && item.count > 0 && (
-              <span className="nav-badge">{item.count}</span>
-            )}
+            {item.count != null && item.count > 0 && <span className="nav-badge">{item.count}</span>}
           </>
         )}
       </button>
@@ -102,14 +85,10 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
     return (
       <>
         {!collapsed && (
-          <button
-            onClick={() => setOpen(v => !v)}
-            className={`nav-item nav-group-header ${hasActive ? 'group-has-active' : ''}`}
-          >
+          <button onClick={() => setOpen(v => !v)} className={`nav-item nav-group-header ${hasActive ? 'group-has-active' : ''}`}>
             <Icon d={iconPath} size={16} className="nav-icon" />
             <span className="nav-label" style={{ flex: 1 }}>{label}</span>
-            <Icon d={icons.chevronDown} size={12}
-              style={{ transform: open ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
+            <Icon d={icons.chevronDown} size={12} style={{ transform: open ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 200ms', flexShrink: 0 }} />
           </button>
         )}
         {(collapsed || open) && groupItems.map(i => renderItem(i, !collapsed))}
@@ -119,7 +98,6 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      {/* Logo */}
       <div className="sidebar-logo">
         <img src="/linea-logo.png" alt="Linea" onError={e => { e.target.style.display='none'; }} />
         {!collapsed && (
@@ -130,7 +108,6 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
         )}
       </div>
 
-      {/* Navigation */}
       <nav className="sidebar-nav">
         {isTransporter ? (
           navItems.map(i => renderItem(i))
@@ -144,28 +121,17 @@ export default function Sidebar({ tab, onChangeTab, visibleTabs = [], counts = {
         )}
       </nav>
 
-      {/* Footer */}
       <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <button onClick={onToggleTheme} className="sidebar-toggle" title={isDark ? 'Modo claro' : 'Modo escuro'}>
           <Icon d={isDark ? icons.sun : icons.moon} size={16} />
-          {!collapsed && (
-            <span style={{ fontSize: 12, color: 'var(--text-2)', marginLeft: 8 }}>
-              {isDark ? 'Modo claro' : 'Modo escuro'}
-            </span>
-          )}
+          {!collapsed && <span style={{ fontSize: 12, color: 'var(--text-2)', marginLeft: 8 }}>{isDark ? 'Modo claro' : 'Modo escuro'}</span>}
         </button>
-
         {user && (
           <button onClick={onLogout} className="sidebar-toggle" title="Sair">
             <Icon d={icons.exit} size={16} style={{ color: 'var(--red)', opacity: 0.7 }} />
-            {!collapsed && (
-              <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user.name || user.email}
-              </span>
-            )}
+            {!collapsed && <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name || user.email}</span>}
           </button>
         )}
-
         <button onClick={() => setCollapsed(v => !v)} className="sidebar-toggle" title={collapsed ? 'Expandir' : 'Recolher'}>
           <Icon d={collapsed ? icons.chevronRight : icons.chevronLeft} size={16} />
         </button>

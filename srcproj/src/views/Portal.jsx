@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from '../hooks/useAuth.jsx';
 import { DataProvider, useData } from '../hooks/useData.jsx';
 import Login from './Login';
@@ -122,18 +122,40 @@ function Portal() {
   const baseC = applyNoteFilter(getVisibleCobranca(safeData, statuses));
   const baseP = applyNoteFilter(getVisibleLancamento(safeData, statuses));
 
+  // ── Monta o conjunto de nomes (principal + aliases) deste transportador ──
+  // Comparação case-insensitive para tolerar variações de maiúsculas/minúsculas.
+  const trAliasSet = useMemo(() => {
+    if (!isTransporter || !transporterName) return new Set();
+    const canonical = transporterName.toLowerCase().trim();
+    const trData = transportadores.find(t =>
+      (t.nome || '').toLowerCase().trim() === canonical
+    );
+    const aliases = Array.isArray(trData?.aliases)
+      ? trData.aliases.map(a => a.toLowerCase().trim()).filter(Boolean)
+      : [];
+    return new Set([canonical, ...aliases]);
+  }, [isTransporter, transporterName, transportadores]);
+
+  // Helper para checar se uma nota pertence a este transportador (nome OU alias)
+  const noteIsMineTr = useCallback((note) => {
+    if (!isTransporter) return true;
+    const tr = (getTransporter(note, extras) || '').toLowerCase().trim();
+    return trAliasSet.has(tr);
+  }, [isTransporter, trAliasSet, extras]);
+
   const myC = isTransporter
     ? baseC.filter(d => {
-        const tr = getTransporter(d, extras) || '';
+        if (!noteIsMineTr(d)) return false;
         const st = statuses[getNoteKey(d)]?.replace('st:', '') || 'pendente';
-        return tr === transporterName && transporterCanSee('cobr', st);
+        return transporterCanSee('cobr', st);
       })
     : baseC;
+
   const myP = isTransporter
     ? baseP.filter(d => {
-        const tr = getTransporter(d, extras) || '';
+        if (!noteIsMineTr(d)) return false;
         const tk = statuses[getNoteKey(d)]?.replace('tk:', '') || 'aguardando';
-        return tr === transporterName && transporterCanSee('pend', tk);
+        return transporterCanSee('pend', tk);
       })
     : baseP;
 
@@ -340,7 +362,6 @@ function Portal() {
     await logAudit({ nfKey: noteKey, action: 'Transportador vinculado', field: 'transportador', oldValue: '', newValue: trName, origin: 'manual' });
   };
 
-  // Muda status diretamente SEM abrir modal (usado pelo aceite formal)
   const directSetStatus = async (noteKey, val, obs = '') => {
     const oldValue = statuses[noteKey]?.replace('st:', '') || 'pendente';
     await setNoteStatus(noteKey, val, obs, user?.name, '', '', '', '');
@@ -365,7 +386,6 @@ function Portal() {
   };
 
   const renderContent = () => {
-    // ── Internal views ──────────────────────────────────────────
     if (tab === 'dashboard' && !isTransporter) return <Dashboard cobrNotes={myC} pendNotes={myP} statuses={statuses} onOpenTab={changeTab} noteMeta={noteMeta} />;
     if (tab === 'dashboard_adv' && !isTransporter) return <Suspense fallback={<LazyFallback />}><DashboardAvancado cobrNotes={myC} pendNotes={myP} statuses={statuses} noteMeta={noteMeta} extras={extras} kpiSnapshots={kpiSnapshots} /></Suspense>;
     if (tab === 'cobranca') return <PendCobranca {...commonListProps} notes={myC} />;
@@ -386,7 +406,6 @@ function Portal() {
     if (tab === 'verificacao') return <Suspense fallback={<LazyFallback />}><AceiteVerificacaoLazy /></Suspense>;
     if (tab === 'usuarios') return <Suspense fallback={<LazyFallback />}><UsuariosAdmin /></Suspense>;
 
-    // ── Transporter views ───────────────────────────────────────
     if (tab === 'tr_dash' && isTransporter) return (
       <TransportDash myC={myC} myP={myP} statuses={statuses} transporterName={transporterName} extras={extras} onChangeTab={changeTab} />
     );

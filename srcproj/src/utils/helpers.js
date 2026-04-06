@@ -171,7 +171,6 @@ export function filterNotes(items, filters, statuses, mode, extras = {}) {
   if (filters.transporters?.length) {
     out = out.filter(d => filters.transporters.includes(getTransporter(d, extras) || 'Não identificado'));
   }
-  // Filtro de aging (aplicado ao vir do dashboard de Aging)
   if (filters.agingCat) {
     out = out.filter(d => {
       const days = calcAging(d);
@@ -215,9 +214,9 @@ export function groupByNfDeb(cobrNotes, extras = {}, history = []) {
     if (!nfDeb) return;
     if (!map[nfDeb]) map[nfDeb] = { nfDeb, pedido: '', pdfUrl: '', valorNfCobrado: '', notes: [], history: [] };
     map[nfDeb].notes.push(note);
-    if (!map[nfDeb].pdfUrl         && ex.pdfUrl)         map[nfDeb].pdfUrl         = ex.pdfUrl;
-    if (!map[nfDeb].pedido          && ex.pedido)          map[nfDeb].pedido          = ex.pedido;
-    if (!map[nfDeb].valorNfCobrado  && ex.valorNfCobrado)  map[nfDeb].valorNfCobrado  = ex.valorNfCobrado;
+    if (!map[nfDeb].pdfUrl        && ex.pdfUrl)        map[nfDeb].pdfUrl        = ex.pdfUrl;
+    if (!map[nfDeb].pedido         && ex.pedido)         map[nfDeb].pedido         = ex.pedido;
+    if (!map[nfDeb].valorNfCobrado && ex.valorNfCobrado) map[nfDeb].valorNfCobrado = ex.valorNfCobrado;
   });
   Object.values(map).forEach(group => {
     const keys = new Set(group.notes.map(getNoteKey));
@@ -245,33 +244,19 @@ export function toExportRows(notes, statuses, extras, mode, noteMeta = {}) {
     const flow = deriveWorkflow(mode, current, meta);
     const ex = extras[key] || {};
     return {
-      Tipo: d.t === 'P' ? 'PARCIAL' : 'TOTAL',
-      Fila: flow.queue,
-      NFD: d.nfd,
-      NFO: d.nfo,
-      Cliente: d.cl,
-      Valor: d.v,
-      UF: d.uf,
-      Motivo: d.mo,
-      Área: d.ar,
-      Transportador: getTransporter(d, extras),
-      Data: d.dt,
+      Tipo: d.t === 'P' ? 'PARCIAL' : 'TOTAL', Fila: flow.queue, NFD: d.nfd, NFO: d.nfo, Cliente: d.cl,
+      Valor: d.v, UF: d.uf, Motivo: d.mo, Área: d.ar, Transportador: getTransporter(d, extras), Data: d.dt,
       'Nº NF Débito': (typeof ex === 'object' ? ex.nfDeb : null) || '',
       Pedido: (typeof ex === 'object' ? ex.pedido : null) || '',
       PDF: (typeof ex === 'object' ? ex.pdfUrl : null) || '',
-      Status: flow.processStatus,
-      'Pendência atual': flow.pendingWith,
+      Status: flow.processStatus, 'Pendência atual': flow.pendingWith,
       'Visível transportador': flow.transporterVisible ? 'Sim' : 'Não',
-      'Posição transportador': flow.transporterResponse,
-      'Próxima ação sugerida': flow.nextAction,
-      Prioridade: meta.prioridade || '',
-      Responsável: meta.responsavel || '',
-      'Próxima ação (manual)': meta.proxima_acao || '',
-      'Motivo bloqueio': meta.motivo_bloqueio || '',
+      'Posição transportador': flow.transporterResponse, 'Próxima ação sugerida': flow.nextAction,
+      Prioridade: meta.prioridade || '', Responsável: meta.responsavel || '',
+      'Próxima ação (manual)': meta.proxima_acao || '', 'Motivo bloqueio': meta.motivo_bloqueio || '',
       'Cobrar transportador': meta.cobrar_transportador ? 'Sim' : 'Não',
       'Retorno autorizado': meta.retorno_autorizado ? 'Sim' : 'Não',
-      'Aguardando documento': meta.aguardando_documento ? 'Sim' : 'Não',
-      Aging: calcAging(d),
+      'Aguardando documento': meta.aguardando_documento ? 'Sim' : 'Não', Aging: calcAging(d),
     };
   });
 }
@@ -287,18 +272,12 @@ export function buildAreaSummary(notes) {
   return Object.values(map).sort((a, b) => b.value - a.value);
 }
 
-// Converte código interno de status para label legível
-// Ex: 'cobr_tr' → 'Aguardando posição do transportador'
 export function getStatusLabel(v) {
   if (!v) return v || '';
-  // Remove prefixos st: tk: e parte de data "(dd/mm/aaaa)"
   const clean = String(v).replace(/^(st:|tk:)/, '').split(' (')[0].trim();
-  return SO.find(s => s.v === clean)?.l
-      || TK.find(t => t.v === clean)?.l
-      || clean;
+  return SO.find(s => s.v === clean)?.l || TK.find(t => t.v === clean)?.l || clean;
 }
 
-// Traduz código interno de status para label legível (ex: 'cobr_tr' → 'Aguardando posição do transportador')
 export function translateStatusLabel(code) {
   if (!code) return code;
   const raw = String(code).replace(/^(st:|tk:)/, '').trim();

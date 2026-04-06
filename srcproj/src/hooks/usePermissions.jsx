@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbLoadProfile } from '../config/supabase';
-
 const FALLBACK = {
   admin:             { tabs: ['dashboard','dashboard_adv','cobranca','lancamento','acompanhamento','nfDebito','transportadores','aging','auditoria','usuarios','verificacao'], can_edit_cobr: true, can_edit_lanc: true, can_import: true, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
   internal:          { tabs: ['dashboard','dashboard_adv','cobranca','lancamento','acompanhamento','nfDebito','transportadores','aging','auditoria','verificacao'], can_edit_cobr: true, can_edit_lanc: true, can_import: true, can_export: true, can_email: true, can_emit_nf: true, note_filter: null },
@@ -10,10 +9,8 @@ const FALLBACK = {
   comercial:         { tabs: ['dashboard'], can_edit_cobr: false, can_edit_lanc: false, can_import: false, can_export: true, can_email: false, can_emit_nf: false, note_filter: null },
   transportador:     { tabs: ['tr_dash','tr_pendentes','tr_andamento','tr_entregas','tr_cobrancas','tr_historico'], can_edit_cobr: false, can_edit_lanc: false, can_import: false, can_export: false, can_email: false, can_emit_nf: false, note_filter: null }
 };
-
 export function usePermissions(user) {
   const [profile, setProfile] = useState(FALLBACK[user?.role || 'internal']);
-
   useEffect(() => {
     let active = true;
     async function load() {
@@ -24,13 +21,11 @@ export function usePermissions(user) {
     load();
     return () => { active = false; };
   }, [user?.role]);
-
   const enrichedTabs = useMemo(() => {
     const baseTabs = profile?.tabs || FALLBACK.internal.tabs;
     if (user?.role === 'admin' && !baseTabs.includes('usuarios')) return [...baseTabs, 'usuarios'];
     return baseTabs;
   }, [profile, user?.role]);
-
   return useMemo(() => ({
     visibleTabs: enrichedTabs,
     canEditCobr: !!profile?.can_edit_cobr,
