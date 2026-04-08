@@ -5,6 +5,11 @@ function gv(row, ...keys) {
   for (const k of keys) { for (const rk of Object.keys(row)) { if (rk.trim().toLowerCase() === k.toLowerCase()) return row[rk]; } }
   return '';
 }
+function absNum(v) {
+  const n = parseFloat(v);
+  if (isNaN(n)) return 0;
+  return Math.abs(n);
+}
 function trimKeys(rows) { return rows.map(r => { const o = {}; Object.entries(r).forEach(([k,v]) => { o[k.trim()] = v; }); return o; }); }
 export function processExcel(buffer) {
   const wb = XLSX.read(buffer, { type: 'array' });
@@ -12,17 +17,36 @@ export function processExcel(buffer) {
   wb.SheetNames.forEach(n => { sheets[n] = trimKeys(XLSX.utils.sheet_to_json(wb.Sheets[n])); });
   const parcial = sheets['Dev Parcial'] || [];
   const total = sheets['Dev Total'] || [];
-  const interna = sheets['Dev Interna Produtos'] || sheets['devolucao-dev'] || [];
+  // Aceita tanto o nome antigo quanto variações. O conteúdo pode vir no formato
+  // nativo do relatório externo ('documento', 'produto', 'descricao', 'quantidade',
+  // 'Vlr.Unitario', 'Vlr.Total', 'Docto. Orig.') ou no formato legado do portal
+  // ('NF', 'PRODUTO', 'DESCRIÇÃO', 'QUANTIDADE', 'VALOR UNITARIO', 'VALOR ITEM NF',
+  // 'NF ORIGEM'). A função gv() tenta todas as chaves possíveis.
+  const interna = sheets['Dev Interna Produtos'] || sheets['devolucoes'] || sheets['devolucao-dev'] || [];
   const nfs = sheets['Base NFs Transportador'] || [];
   return processFiles(parcial, total, interna, nfs);
 }
 function processFiles(parcial, total, interna, nfBase) {
   const prodMap = {};
   interna.forEach(r => {
-    const nf = norm(gv(r,'NF')), nfOrig = norm(gv(r,'NF ORIGEM'));
+    // NF: legado 'NF' / novo 'documento'
+    const nf = norm(gv(r,'NF','documento'));
+    // NF ORIGEM: legado 'NF ORIGEM' / novo 'Docto. Orig.'
+    const nfOrig = norm(gv(r,'NF ORIGEM','Docto. Orig.','Docto Orig','Docto. Orig'));
     const key = nf+'|'+nfOrig;
     if (!prodMap[key]) prodMap[key] = [];
-    prodMap[key].push({ cod: str(gv(r,'PRODUTO')), desc: str(gv(r,'DESCRIÇÃO','DESCRICAO')), qt: parseFloat(gv(r,'QTD','QUANTIDADE'))||0, vi: parseFloat(gv(r,'VALOR','VALOR ITEM NF'))||0, vu: parseFloat(gv(r,'VALOR UNITARIO','VALOR UNITÁRIO','VALOR UNIT','VL UNITARIO','VL UNIT'))||0 });
+    prodMap[key].push({
+      // PRODUTO: legado 'PRODUTO' / novo 'produto'
+      cod: str(gv(r,'PRODUTO','produto')),
+      // DESCRIÇÃO: legado 'DESCRIÇÃO'/'DESCRICAO' / novo 'descricao'
+      desc: str(gv(r,'DESCRIÇÃO','DESCRICAO','descricao')),
+      // QUANTIDADE: relatório externo vem positivo, legado vem negativo. Normalizamos p/ positivo.
+      qt: absNum(gv(r,'QTD','QUANTIDADE','quantidade')),
+      // VALOR ITEM NF: legado 'VALOR'/'VALOR ITEM NF' / novo 'Vlr.Total'
+      vi: absNum(gv(r,'VALOR','VALOR ITEM NF','Vlr.Total','Vlr Total','Valor Total')),
+      // VALOR UNITARIO: legado varia / novo 'Vlr.Unitario'
+      vu: absNum(gv(r,'VALOR UNITARIO','VALOR UNITÁRIO','VALOR UNIT','VL UNITARIO','VL UNIT','Vlr.Unitario','Vlr Unitario','Valor Unitario')),
+    });
   });
   const trMap = {}, dtEntMap = {};
   nfBase.forEach(r => {
