@@ -1,3 +1,10 @@
+// Desabilita o body parser automático do Vercel para capturar o body raw
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_ANON_KEY;
 
@@ -24,6 +31,16 @@ async function sbInsert(table, payload) {
   }
 }
 
+// Lê o body raw da requisição (como Buffer)
+function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 function g(obj, ...keys) {
   if (!obj || typeof obj !== 'object') return '';
   for (const k of keys) {
@@ -44,24 +61,51 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const body = req.body;
+  // ── STEP 1: Lê o body raw (bypassa o parser automático) ──────────────
+  let rawBuffer;
+  try {
+    rawBuffer = await getRawBody(req);
+  } catch(e) {
+    console.error('[romaneio-nf] erro ao ler body:', e.message);
+    return res.status(200).json([{ Erro: true, Mensagem: 'Erro lendo body: ' + e.message }]);
+  }
 
-  // ── STEP 1: Captura payload RAW imediatamente ─────────────────────────
-  // (número único para não violar constraints)
+  const rawStr = rawBuffer.toString('utf-8');
+  console.log('[romaneio-nf] content-type:', req.headers['content-type']);
+  console.log('[romaneio-nf] body length:', rawStr.length);
+  console.log('[romaneio-nf] body preview:', rawStr.slice(0, 300));
+
+  // ── STEP 2: Salva raw para debug ───────────────────────────────────────
   await sbInsert('active_webhooks', {
     tipo: 'romaneio_nf_raw',
     source: 'active_onsupply',
     numero: `raw_${Date.now()}`,
-    observacao: `keys:${Object.keys(body || {}).join(',')}`,
-    payload_raw: body,
+    observacao: `ct:${req.headers['content-type']} len:${rawStr.length}`,
+    payload_raw: { raw: rawStr.slice(0, 2000) }, // salva como JSONB
   });
 
-  console.log('[romaneio-nf] body type:', typeof body);
-  console.log('[romaneio-nf] keys:', Object.keys(body || {}).join(','));
-
-  // ── STEP 2: Processa as NFs ───────────────────────────────────────────
+  // ── STEP 3: Tenta parsear o JSON ──────────────────────────────────────
+  let body;
   try {
-    // Normaliza: o Active pode enviar array ou objeto único
+    // Remove BOM e whitespace antes de parsear
+    const cleaned = rawStr.replace(/^\uFEFF/, '').trim();
+    body = JSON.parse(cleaned);
+  } catch(e) {
+    console.error('[romaneio-nf] JSON inválido:', e.message);
+    console.error('[romaneio-nf] raw (primeiros 500):', rawStr.slice(0, 500));
+    await sbInsert('active_webhooks', {
+      tipo: 'romaneio_nf_erro',
+      source: 'active_onsupply',
+      numero: `erro_${Date.now()}`,
+      observacao: 'JSON invalido: ' + e.message,
+      payload_raw: { raw: rawStr.slice(0, 3000) },
+    });
+    // Retorna 200 para o Active não fazer retry
+    return res.status(200).json([{ Erro: true, Mensagem: 'JSON invalido: ' + e.message }]);
+  }
+
+  // ── STEP 4: Processa as NFs ───────────────────────────────────────────
+  try {
     const envelopes = Array.isArray(body) ? body : [body];
     const results = [];
 
@@ -75,7 +119,6 @@ export default async function handler(req, res) {
       const transp = envelope.TRANSPORTADOR || {};
       const remet  = envelope.CONTRATANTE || envelope.REMETENTE || {};
 
-      // NFs do romaneio
       const notasFiscais = Array.isArray(envelope.NOTAFISCAL) ? envelope.NOTAFISCAL :
                            Array.isArray(envelope.NOTAS_FISCAIS) ? envelope.NOTAS_FISCAIS :
                            Array.isArray(envelope.NOTAS) ? envelope.NOTAS : [];
@@ -83,12 +126,11 @@ export default async function handler(req, res) {
       console.log(`[romaneio-nf] romaneio=${romNum} nfs=${notasFiscais.length}`);
 
       if (notasFiscais.length === 0) {
-        // Sem NFs — salva o envelope para diagnóstico
         await sbInsert('active_webhooks', {
           tipo: 'romaneio_nf_debug',
           source: 'active_onsupply',
           numero: `debug_${Date.now()}`,
-          observacao: `romaneio_${romNum || 'sem_numero'} sem_nfs`,
+          observacao: `romaneio_${romNum || 'sem_numero'} sem_nfs keys:${Object.keys(envelope).join(',')}`,
           payload_raw: envelope,
         });
         continue;
@@ -96,10 +138,9 @@ export default async function handler(req, res) {
 
       for (const nf of notasFiscais) {
         if (!nf || typeof nf !== 'object') continue;
-
         const dest   = nf.DESTINATARIO || {};
         const nfNum  = String(g(nf, 'NUMERO') || '');
-        if (!nfNum) { console.warn('[romaneio-nf] NF sem numero'); continue; }
+        if (!nfNum) continue;
 
         const ok = await sbInsert('active_webhooks', {
           tipo: 'romaneio_nf',
@@ -117,12 +158,11 @@ export default async function handler(req, res) {
           remetente_nome: g(remet, 'RAZAOSOCIAL', 'FANTASIA'),
           destinatario_cnpj: g(dest, 'CNPJCPF'),
           destinatario_nome: g(dest, 'RAZAOSOCIAL', 'FANTASIA'),
-          observacao: romNum,  // número do romaneio
+          observacao: romNum,
           payload_raw: envelope,
         });
-
-        console.log(`[romaneio-nf] NF ${nfNum} -> ${ok ? 'OK' : 'FALHOU (possível duplicata)'}`);
-        results.push({ nf: nfNum, romaneio: romNum, ok });
+        console.log(`[romaneio-nf] NF ${nfNum} -> ${ok ? 'OK' : 'FALHOU'}`);
+        results.push({ nf: nfNum, romaneio: romNum });
       }
     }
 
@@ -132,34 +172,14 @@ export default async function handler(req, res) {
       Inicio_Processamento: new Date().toISOString(),
       Termino_Processamento: new Date().toISOString(),
       Tempo_Processamento: '00:00:00.001',
-      Codigo: '000',
-      Mensagem: 'Processado com Sucesso',
-      Linha: i + 1,
-      Tipo_Documento: 'Romaneio NF',
+      Codigo: '000', Mensagem: 'Processado com Sucesso',
+      Linha: i + 1, Tipo_Documento: 'Romaneio NF',
       Referencia: `NF: ${r.nf} | Romaneio: ${r.romaneio}`,
-      Campo_Relacionado: '',
-      Erro: false,
-      Informacao_Complementar: {},
+      Campo_Relacionado: '', Erro: false, Informacao_Complementar: {},
     })));
 
   } catch (err) {
-    console.error('[romaneio-nf] ERRO no processamento:', err.message);
-    console.error('[romaneio-nf] stack:', err.stack);
-    // Não relança — retorna 200 para o Active não fazer retry infinito
-    return res.status(200).json([{
-      Guid_Processamento: `error-${Date.now()}`,
-      Chave_Cliente: 'LINEA_PORTAL',
-      Inicio_Processamento: new Date().toISOString(),
-      Termino_Processamento: new Date().toISOString(),
-      Tempo_Processamento: '00:00:00.000',
-      Codigo: '999',
-      Mensagem: `Erro interno: ${err.message}`,
-      Linha: 1,
-      Tipo_Documento: 'Romaneio NF',
-      Referencia: '',
-      Campo_Relacionado: '',
-      Erro: true,
-      Informacao_Complementar: {},
-    }]);
+    console.error('[romaneio-nf] ERRO processamento:', err.message);
+    return res.status(200).json([{ Erro: true, Mensagem: err.message }]);
   }
 }
