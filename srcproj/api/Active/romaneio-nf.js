@@ -24,6 +24,28 @@ function getRawBody(req) {
   });
 }
 
+// Extrai valor de uma tag XML simples (primeira ocorrência)
+function xmlTag(xml, name) {
+  const m = new RegExp(`<${name}[^>]*>([^<]*)</${name}>`, 'i').exec(xml);
+  return m ? m[1].trim() : '';
+}
+
+// Extrai atributo de uma tag XML
+function xmlAttr(xml, tag, attr) {
+  const m = new RegExp(`<${tag}[^>]*${attr}="([^"]*)"`, 'i').exec(xml);
+  return m ? m[1] : '';
+}
+
+// Converte DD/MM/YYYY ou DD/MM/YYYY HH:MM para YYYY-MM-DD
+function parseDateBR(s) {
+  if (!s) return null;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s.trim());
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // Já está no formato YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return null;
+}
+
 function g(obj, ...keys) {
   if (!obj || typeof obj !== 'object') return '';
   for (const k of keys) { if (obj[k] !== undefined && obj[k] !== null) return obj[k]; }
@@ -31,37 +53,42 @@ function g(obj, ...keys) {
 }
 function gn(obj, ...keys) { const v = g(obj, ...keys); return v === '' ? 0 : Number(v) || 0; }
 
-// Parser XML simples para o formato do Active (sem biblioteca externa)
+// Parser do formato XML do Active: WS_ROMANEIO_CALCULADO_V000
+// Estrutura: <ROMANEIO NUMERO="3293"><ENVOLVIDOS>...</ENVOLVIDOS><ROMANEIO>...</ROMANEIO><NOTAFISCAL><ITEM ID="236679">...</ITEM>...</NOTAFISCAL>
 function parseXmlRomaneio(xml) {
-  const attr = (tag, name) => { const m = new RegExp(`<${tag}[^>]*${name}="([^"]*)"`, 'i').exec(xml); return m ? m[1] : ''; };
-  const tag   = (name) => { const m = new RegExp(`<${name}[^>]*>([^<]*)</${name}>`, 'i').exec(xml); return m ? m[1].trim() : ''; };
+  // Dados do romaneio
+  const romNum   = xmlAttr(xml, 'ROMANEIO', 'NUMERO') || xmlTag(xml, 'NUMERO');
+  const saidaRaw = xmlTag(xml, 'SAIDA_DATA');
+  const saidaDt  = parseDateBR(saidaRaw);
 
-  const romNum = attr('ROMANEIO', 'NUMERO') || tag('NUMERO');
-  const saidaDt = tag('SAIDA_DATA') || tag('DATA_SAIDA');
-  const transpCNPJ = tag('TRANSPORTADOR');
-  const transpNome = tag('TRANSPORTADOR_RAZAOSOCIAL');
-  const remetCNPJ = tag('CONTRATANTE');
-  const remetNome = tag('CONTRATANTE_RAZAOSOCIAL');
+  // Transportadora e contratante (nível ENVOLVIDOS)
+  const transpCNPJ = xmlTag(xml, 'TRANSPORTADOR');
+  const transpNome = xmlTag(xml, 'TRANSPORTADOR_RAZAOSOCIAL');
+  const remetCNPJ  = xmlTag(xml, 'CONTRATANTE');
+  const remetNome  = xmlTag(xml, 'CONTRATANTE_RAZAOSOCIAL');
 
-  // Extrai todas as NFs do XML
+  // NFs: cada <ITEM ID="NF_NUMERO">...</ITEM> dentro de <NOTAFISCAL>
   const nfs = [];
-  const nfBlocks = xml.match(/<NOTAFISCAL[^>]*>[\s\S]*?<\/NOTAFISCAL>/gi) || [];
-  for (const block of nfBlocks) {
-    const nfTag = (n) => { const m = new RegExp(`<${n}[^>]*>([^<]*)</${n}>`, 'i').exec(block); return m ? m[1].trim() : ''; };
-    const nfNum = nfTag('NUMERO');
-    if (!nfNum) continue;
-    nfs.push({
-      numero: nfNum,
-      serie: nfTag('SERIE') || '2',
-      chave: nfTag('CHAVE'),
-      valor: parseFloat(nfTag('VALOR')) || 0,
-      peso: parseFloat(nfTag('PESO') || nfTag('PESOCALCULADO')) || 0,
-      volumes: parseInt(nfTag('VOLUMES')) || 0,
-      destCNPJ: nfTag('DESTINATARIO') || nfTag('DESTINATARIO_CNPJ'),
-      destNome: nfTag('DESTINATARIO_RAZAOSOCIAL'),
-    });
+  const itemRegex = /<ITEM\s+ID="([^"]+)">([\s\S]*?)<\/ITEM>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const nfNum  = match[1];  // ID do ITEM = número da NF
+    const block  = match[2];
+
+    const serie   = xmlTag(block, 'SERIE') || '2';
+    const chave   = xmlTag(block, 'CHAVE');
+    const emissao = parseDateBR(xmlTag(block, 'EMISSAO'));
+    const peso    = parseFloat(xmlTag(block, 'PESO') || xmlTag(block, 'PESOCALCULADO') || '0') || 0;
+    const volumes = parseInt(xmlTag(block, 'VOLUMES') || '0') || 0;
+    const valor   = parseFloat(xmlTag(block, 'VALOR') || '0') || 0;
+    const destCNPJ = xmlTag(block, 'DESTINATARIO');
+    const destNome = xmlTag(block, 'DESTINATARIO_RAZAOSOCIAL');
+    const destFantasia = xmlTag(block, 'DESTINATARIO_FANTASIA');
+
+    nfs.push({ nfNum, serie, chave, emissao, peso, volumes, valor, destCNPJ, destNome: destFantasia || destNome });
   }
 
+  console.log(`[romaneio-nf] XML parsed: rom=${romNum} data=${saidaDt} nfs=${nfs.length} transp=${transpNome}`);
   return { romNum, saidaDt, transpCNPJ, transpNome, remetCNPJ, remetNome, nfs };
 }
 
@@ -76,73 +103,66 @@ export default async function handler(req, res) {
   const rawStr = rawBuffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
   const ct = req.headers['content-type'] || '';
 
-  console.log(`[romaneio-nf] ct:${ct.slice(0,40)} len:${rawStr.length} starts:${rawStr.slice(0,30)}`);
+  console.log(`[romaneio-nf] ct:${ct.slice(0,40)} len:${rawStr.length} starts:${rawStr.slice(0,20)}`);
 
   const results = [];
   let romNum = '', saidaDt = null, transpCNPJ = '', transpNome = '', remetCNPJ = '', remetNome = '', nfList = [];
 
-  // ── Detecta formato: XML ou JSON ───────────────────────────────────────
   if (rawStr.startsWith('<')) {
-    // Formato XML (WS_ROMANEIO_CALCULADO_V000 envia XML mesmo com Content-Type json)
-    console.log('[romaneio-nf] formato XML detectado');
+    // XML — WS_ROMANEIO_CALCULADO_V000
     const parsed = parseXmlRomaneio(rawStr);
     romNum = parsed.romNum; saidaDt = parsed.saidaDt;
     transpCNPJ = parsed.transpCNPJ; transpNome = parsed.transpNome;
     remetCNPJ = parsed.remetCNPJ; remetNome = parsed.remetNome;
-    nfList = parsed.nfs;
+    nfList = parsed.nfs.map(n => ({
+      numero: n.nfNum, serie: n.serie, chave: n.chave,
+      valor: n.valor, peso: n.peso, volumes: n.volumes,
+      destCNPJ: n.destCNPJ, destNome: n.destNome,
+    }));
   } else {
-    // Formato JSON
+    // JSON — API_ROMANEIO_CALCULADO_V000
     let body;
     try { body = JSON.parse(rawStr); } catch(e) {
-      console.error('[romaneio-nf] JSON inválido:', e.message.slice(0, 100));
-      await sbInsert('active_webhooks', { tipo: 'romaneio_nf_erro', source: 'active_onsupply', numero: `erro_${Date.now()}`, observacao: 'parse err: ' + e.message.slice(0,200), payload_raw: { raw: rawStr.slice(0,2000) } });
+      console.error('[romaneio-nf] formato não reconhecido:', rawStr.slice(0, 100));
       return res.status(200).json([{ Erro: true, Mensagem: 'Formato não reconhecido' }]);
     }
-
     const envelopes = Array.isArray(body) ? body : [body];
     for (const env of envelopes) {
       if (!env || typeof env !== 'object') continue;
       const rom = env.ROMANEIO || {};
       romNum = String(g(rom, 'NUMERO') || g(env, 'NUMERO') || '');
-      saidaDt = g(rom, 'SAIDA_DATA', 'DATA_SAIDA') || g(env, 'SAIDA_DATA') || null;
+      saidaDt = parseDateBR(g(rom, 'SAIDA_DATA', 'DATA_SAIDA')) || g(rom, 'SAIDA_DATA') || null;
       const transp = env.TRANSPORTADOR || {};
       const remet  = env.CONTRATANTE || env.REMETENTE || {};
       transpCNPJ = g(transp, 'CNPJCPF'); transpNome = g(transp, 'RAZAOSOCIAL', 'FANTASIA');
       remetCNPJ  = g(remet, 'CNPJCPF');  remetNome  = g(remet, 'RAZAOSOCIAL', 'FANTASIA');
-
       const notasFiscais = Array.isArray(env.NOTAFISCAL) ? env.NOTAFISCAL : Array.isArray(env.NOTAS_FISCAIS) ? env.NOTAS_FISCAIS : [];
       for (const nf of notasFiscais) {
         if (!nf || typeof nf !== 'object') continue;
         const dest = nf.DESTINATARIO || {};
-        nfList.push({ numero: String(g(nf,'NUMERO')||''), serie: g(nf,'SERIE')||'2', chave: g(nf,'CHAVE'), valor: gn(nf,'VALOR'), peso: gn(nf,'PESO','PESOCALCULADO'), volumes: parseInt(g(nf,'VOLUMES')||'0')||0, destCNPJ: g(dest,'CNPJCPF'), destNome: g(dest,'RAZAOSOCIAL','FANTASIA') });
+        nfList.push({ numero: String(g(nf,'NUMERO')||''), serie: g(nf,'SERIE')||'2', chave: g(nf,'CHAVE'), valor: gn(nf,'VALOR'), peso: gn(nf,'PESO','PESOCALCULADO'), volumes: parseInt(g(nf,'VOLUMES')||'0')||0, destCNPJ: g(dest,'CNPJCPF'), destNome: g(dest,'FANTASIA','RAZAOSOCIAL') });
       }
-
-      // Processa apenas o primeiro envelope
       break;
     }
   }
 
-  console.log(`[romaneio-nf] romaneio=${romNum} nfs=${nfList.length} data=${saidaDt}`);
+  console.log(`[romaneio-nf] processando rom=${romNum} nfs=${nfList.length} data=${saidaDt}`);
 
-  if (nfList.length === 0) {
-    await sbInsert('active_webhooks', { tipo: 'romaneio_nf_debug', source: 'active_onsupply', numero: `debug_${Date.now()}`, observacao: `rom_${romNum}_sem_nfs`, payload_raw: { raw: rawStr.slice(0, 2000) } });
-  } else {
-    for (const nf of nfList) {
-      if (!nf.numero) continue;
-      const ok = await sbInsert('active_webhooks', {
-        tipo: 'romaneio_nf', source: 'active_onsupply',
-        numero: nf.numero, serie: nf.serie, chave_nfe: nf.chave,
-        data_emissao: saidaDt || null,
-        valor_mercadoria: nf.valor, peso: nf.peso, volumes: nf.volumes,
-        transportador_cnpj: transpCNPJ, transportador_nome: transpNome,
-        remetente_cnpj: remetCNPJ, remetente_nome: remetNome,
-        destinatario_cnpj: nf.destCNPJ, destinatario_nome: nf.destNome,
-        observacao: romNum,
-        payload_raw: { raw: rawStr.slice(0, 3000) },
-      });
-      console.log(`[romaneio-nf] NF ${nf.numero} -> ${ok ? 'OK' : 'skip(dup?)'}`);
-      results.push({ nf: nf.numero, romaneio: romNum });
-    }
+  for (const nf of nfList) {
+    if (!nf.numero) continue;
+    const ok = await sbInsert('active_webhooks', {
+      tipo: 'romaneio_nf', source: 'active_onsupply',
+      numero: nf.numero, serie: nf.serie, chave_nfe: nf.chave,
+      data_emissao: saidaDt || null,
+      valor_mercadoria: nf.valor, peso: nf.peso, volumes: nf.volumes,
+      transportador_cnpj: transpCNPJ, transportador_nome: transpNome,
+      remetente_cnpj: remetCNPJ, remetente_nome: remetNome,
+      destinatario_cnpj: nf.destCNPJ, destinatario_nome: nf.destNome,
+      observacao: romNum,
+      payload_raw: { romaneio: romNum, saida: saidaDt, nf: nf.numero },
+    });
+    console.log(`[romaneio-nf] NF ${nf.numero} -> ${ok ? 'OK' : 'skip'}`);
+    if (ok) results.push({ nf: nf.numero, romaneio: romNum });
   }
 
   return res.status(200).json(results.map((r, i) => ({
