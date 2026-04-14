@@ -2,25 +2,30 @@ const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_ANON_KEY;
 
 async function sbInsert(table, payload) {
-  const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
-    method: 'POST',
-    headers: {
-      'apikey': SB_KEY,
-      'Authorization': `Bearer ${SB_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=minimal'
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    console.error(`[sb:${table}] ${res.status}`, txt);
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error(`[sb:${table}] ${res.status}`, txt.slice(0, 200));
+    }
+    return res.ok;
+  } catch(e) {
+    console.error(`[sb:${table}] fetch error:`, e.message);
+    return false;
   }
-  return res.ok;
 }
 
 function g(obj, ...keys) {
-  if (!obj) return '';
+  if (!obj || typeof obj !== 'object') return '';
   for (const k of keys) {
     if (obj[k] !== undefined && obj[k] !== null) return obj[k];
   }
@@ -32,41 +37,6 @@ function gn(obj, ...keys) {
   return v === '' || v === null ? 0 : Number(v) || 0;
 }
 
-// Normaliza um único payload no formato API_ROMANEIO_CALCULADO_V000
-// Retorna lista de items { romNum, romData, transp, remet, nf }
-function parsePayload(body) {
-  // O Active pode enviar array de romaneios ou objeto único
-  const items = Array.isArray(body) ? body : [body];
-  const result = [];
-
-  for (const item of items) {
-    // Campos do romaneio
-    const rom      = item.ROMANEIO || {};
-    const romNum   = g(rom, 'NUMERO') || g(item, 'NUMERO', 'numero');
-    const romData  = g(rom, 'SAIDA_DATA', 'DATA', 'DATA_SAIDA') || g(item, 'SAIDA_DATA', 'DATA');
-    const romHora  = g(rom, 'SAIDA_HORA', 'HORA') || '';
-
-    // Transportadora e remetente ficam no nível raiz
-    const transp   = item.TRANSPORTADOR || {};
-    const remet    = item.CONTRATANTE   || item.REMETENTE || {};
-
-    // NFs ficam em NOTAFISCAL (array)
-    const notasFiscais = item.NOTAFISCAL || item.NOTAS_FISCAIS || item.NOTAS || [];
-
-    if (notasFiscais.length === 0) {
-      // Sem NFs no payload — salva o payload bruto para debug
-      console.warn('[romaneio-nf] nenhuma NF no payload. keys:', Object.keys(item));
-      result.push({ romNum, romData, romHora, transp, remet, nf: null, rawItem: item });
-    } else {
-      for (const nf of notasFiscais) {
-        result.push({ romNum, romData, romHora, transp, remet, nf, rawItem: item });
-      }
-    }
-  }
-
-  return result;
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -74,73 +44,87 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const body = req.body;
+
+  // ── STEP 1: Captura payload RAW imediatamente ─────────────────────────
+  // (número único para não violar constraints)
+  await sbInsert('active_webhooks', {
+    tipo: 'romaneio_nf_raw',
+    source: 'active_onsupply',
+    numero: `raw_${Date.now()}`,
+    observacao: `keys:${Object.keys(body || {}).join(',')}`,
+    payload_raw: body,
+  });
+
+  console.log('[romaneio-nf] body type:', typeof body);
+  console.log('[romaneio-nf] keys:', Object.keys(body || {}).join(','));
+
+  // ── STEP 2: Processa as NFs ───────────────────────────────────────────
   try {
-    const body = req.body;
-
-    // Log estrutural do payload para debug
-    console.log('[romaneio-nf] keys raiz:', Object.keys(body || {}));
-    console.log('[romaneio-nf] ROMANEIO:', JSON.stringify(body?.ROMANEIO || body?.romaneio || 'n/a').slice(0, 200));
-    console.log('[romaneio-nf] NOTAFISCAL count:', (body?.NOTAFISCAL || body?.NOTAS_FISCAIS || []).length);
-
-    const parsed = parsePayload(body);
+    // Normaliza: o Active pode enviar array ou objeto único
+    const envelopes = Array.isArray(body) ? body : [body];
     const results = [];
 
-    for (const { romNum, romData, transp, remet, nf, rawItem } of parsed) {
-      if (!nf) {
-        // Salva debug sem NF
+    for (const envelope of envelopes) {
+      if (!envelope || typeof envelope !== 'object') continue;
+
+      const rom    = envelope.ROMANEIO || {};
+      const romNum = String(g(rom, 'NUMERO') || g(envelope, 'NUMERO') || '');
+      const romDt  = g(rom, 'SAIDA_DATA', 'DATA_SAIDA', 'DATA') || g(envelope, 'SAIDA_DATA') || null;
+
+      const transp = envelope.TRANSPORTADOR || {};
+      const remet  = envelope.CONTRATANTE || envelope.REMETENTE || {};
+
+      // NFs do romaneio
+      const notasFiscais = Array.isArray(envelope.NOTAFISCAL) ? envelope.NOTAFISCAL :
+                           Array.isArray(envelope.NOTAS_FISCAIS) ? envelope.NOTAS_FISCAIS :
+                           Array.isArray(envelope.NOTAS) ? envelope.NOTAS : [];
+
+      console.log(`[romaneio-nf] romaneio=${romNum} nfs=${notasFiscais.length}`);
+
+      if (notasFiscais.length === 0) {
+        // Sem NFs — salva o envelope para diagnóstico
         await sbInsert('active_webhooks', {
           tipo: 'romaneio_nf_debug',
           source: 'active_onsupply',
           numero: `debug_${Date.now()}`,
-          observacao: `romaneio_${romNum || 'sem_numero'}`,
-          payload_raw: rawItem,
+          observacao: `romaneio_${romNum || 'sem_numero'} sem_nfs`,
+          payload_raw: envelope,
         });
         continue;
       }
 
-      const nfNum    = g(nf, 'NUMERO', 'numero', 'NF');
-      const nfSerie  = g(nf, 'SERIE', 'serie');
-      const nfChave  = g(nf, 'CHAVE', 'chave_nfe', 'CHAVE_NF');
-      const nfEmiss  = g(nf, 'EMISSAO', 'EMISSAO_DATA') || romData;
-      const nfCFOP   = g(nf, 'CFOP', 'cfop');
-      const nfValor  = gn(nf, 'VALOR');
-      const nfPeso   = gn(nf, 'PESO', 'PESOCALCULADO');
-      const nfVols   = parseInt(g(nf, 'VOLUMES', 'QTDE_VOLUMES')) || 0;
-      const nfCC     = g(nf, 'CENTRO_CUSTO', 'CC', 'CENTRO');
-      const dest     = nf.DESTINATARIO || {};
+      for (const nf of notasFiscais) {
+        if (!nf || typeof nf !== 'object') continue;
 
-      if (!nfNum) {
-        console.warn('[romaneio-nf] NF sem numero. keys:', Object.keys(nf));
-        continue;
+        const dest   = nf.DESTINATARIO || {};
+        const nfNum  = String(g(nf, 'NUMERO') || '');
+        if (!nfNum) { console.warn('[romaneio-nf] NF sem numero'); continue; }
+
+        const ok = await sbInsert('active_webhooks', {
+          tipo: 'romaneio_nf',
+          source: 'active_onsupply',
+          numero: nfNum,
+          serie: g(nf, 'SERIE') || '2',
+          chave_nfe: g(nf, 'CHAVE') || '',
+          data_emissao: romDt || null,
+          valor_mercadoria: gn(nf, 'VALOR'),
+          peso: gn(nf, 'PESO', 'PESOCALCULADO'),
+          volumes: parseInt(g(nf, 'VOLUMES') || '0') || 0,
+          transportador_cnpj: g(transp, 'CNPJCPF'),
+          transportador_nome: g(transp, 'RAZAOSOCIAL', 'FANTASIA'),
+          remetente_cnpj: g(remet, 'CNPJCPF'),
+          remetente_nome: g(remet, 'RAZAOSOCIAL', 'FANTASIA'),
+          destinatario_cnpj: g(dest, 'CNPJCPF'),
+          destinatario_nome: g(dest, 'RAZAOSOCIAL', 'FANTASIA'),
+          observacao: romNum,  // número do romaneio
+          payload_raw: envelope,
+        });
+
+        console.log(`[romaneio-nf] NF ${nfNum} -> ${ok ? 'OK' : 'FALHOU (possível duplicata)'}`);
+        results.push({ nf: nfNum, romaneio: romNum, ok });
       }
-
-      console.log(`[romaneio-nf] inserindo NF ${nfNum} | romaneio ${romNum} | transp ${g(transp,'RAZAOSOCIAL','FANTASIA')}`);
-
-      await sbInsert('active_webhooks', {
-        tipo: 'romaneio_nf',
-        source: 'active_onsupply',
-        numero: nfNum,           // número da NF
-        serie: nfSerie,
-        chave_nfe: nfChave,
-        cfop: nfCFOP,
-        data_emissao: romData || nfEmiss || null,  // data de saída do romaneio
-        valor_mercadoria: nfValor,
-        peso: nfPeso,
-        volumes: nfVols,
-        transportador_cnpj: g(transp, 'CNPJCPF'),
-        transportador_nome: g(transp, 'RAZAOSOCIAL', 'FANTASIA'),
-        remetente_cnpj: g(remet, 'CNPJCPF'),
-        remetente_nome: g(remet, 'RAZAOSOCIAL', 'FANTASIA'),
-        destinatario_cnpj: g(dest, 'CNPJCPF'),
-        destinatario_nome: g(dest, 'RAZAOSOCIAL', 'FANTASIA'),
-        observacao: romNum ? String(romNum) : nfCC,  // número do romaneio no campo observacao
-        payload_raw: rawItem,
-      });
-
-      results.push({ nf: nfNum, romaneio: romNum, status: 'ok' });
     }
-
-    console.log(`[romaneio-nf] processadas ${results.length} NFs`);
 
     return res.status(200).json(results.map((r, i) => ({
       Guid_Processamento: `${Date.now()}-${i}`,
@@ -159,18 +143,9 @@ export default async function handler(req, res) {
     })));
 
   } catch (err) {
-    console.error('[romaneio-nf] ERRO:', err.message, err.stack);
-    try {
-      await sbInsert('active_webhooks', {
-        tipo: 'romaneio_nf_erro',
-        source: 'active_onsupply',
-        numero: `erro_${Date.now()}`,
-        payload_raw: req.body || 'empty',
-        observacao: err.message,
-      });
-    } catch (e2) {
-      console.error('[romaneio-nf] catch interno:', e2.message);
-    }
+    console.error('[romaneio-nf] ERRO no processamento:', err.message);
+    console.error('[romaneio-nf] stack:', err.stack);
+    // Não relança — retorna 200 para o Active não fazer retry infinito
     return res.status(200).json([{
       Guid_Processamento: `error-${Date.now()}`,
       Chave_Cliente: 'LINEA_PORTAL',
@@ -178,7 +153,7 @@ export default async function handler(req, res) {
       Termino_Processamento: new Date().toISOString(),
       Tempo_Processamento: '00:00:00.000',
       Codigo: '999',
-      Mensagem: `Erro: ${err.message}`,
+      Mensagem: `Erro interno: ${err.message}`,
       Linha: 1,
       Tipo_Documento: 'Romaneio NF',
       Referencia: '',
