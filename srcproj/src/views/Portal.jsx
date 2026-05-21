@@ -12,6 +12,8 @@ import TransportAndamento from './TransportAndamento';
 import TransportEntregas from './TransportEntregas';
 import TransportCobrancas from './TransportCobrancas';
 import TransportHistorico from './TransportHistorico';
+import TransportOcorrencias from './TransportOcorrencias';
+import AnalistaOcorrencias from './AnalistaOcorrencias';
 import NoteDrawer from '../components/NoteDrawer';
 import StatusModal from '../components/StatusModal';
 import EmailModal from '../components/EmailModal';
@@ -75,6 +77,8 @@ const PAGE_TITLES = {
   tr_entregas:      'Entregas',
   tr_cobrancas:     'Cobranças',
   tr_historico:     'Todas as Notas',
+  tr_ocorrencias:   'Minhas Devoluções',
+  analista_oc:      'Ocorrências — Análise',
 };
 
 function Portal() {
@@ -91,7 +95,9 @@ function Portal() {
   const { notifications, markRead, createNotification } = useNotifications(user);
   const { isDark, toggleTheme } = useTheme();
 
-  const [tab, setTab] = useState(isTransporter ? 'tr_dash' : 'dashboard');
+  const [tab, setTab] = useState(
+    isTransporter ? 'tr_dash' : (user?.role === 'analista' ? 'analista_ocorrencias' : 'dashboard')
+  );
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selected, setSelected] = useState(new Set());
   const [detailTab, setDetailTab] = useState({});
@@ -172,6 +178,7 @@ function Portal() {
       tr_entregas:  myP.filter(n => ['agend_confirmado', 'agendado'].includes(getTracking(n, statuses))).length,
       tr_cobrancas: myC.length,
       tr_historico: myC.length + myP.length,
+      tr_ocorrencias: 0, // loaded async
     };
   }, [isTransporter, myC, myP, statuses]);
 
@@ -418,6 +425,8 @@ function Portal() {
     if (tab === 'tr_entregas' && isTransporter) return <TransportEntregas {...commonListProps} notes={myP} />;
     if (tab === 'tr_cobrancas' && isTransporter) return <TransportCobrancas {...commonListProps} notes={myC} />;
     if (tab === 'tr_historico' && isTransporter) return <TransportHistorico {...commonListProps} notes={[...myP, ...myC]} />;
+    if (tab === 'tr_ocorrencias' && isTransporter) return <TransportOcorrencias user={user} transporterName={transporterName} transporterCnpj={user?.appMeta?.cnpj || user?.meta?.cnpj || ''} />;
+    if (tab === 'analista_ocorrencias') return <AnalistaOcorrencias user={user} />;
 
     return null;
   };

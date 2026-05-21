@@ -4,10 +4,12 @@ import { supabase } from '../config/constants';
 
 const ROLE_OPTIONS = [
   { value: 'admin',            label: 'Administrador' },
+  { value: 'analista',         label: 'Analista de Devoluções' },
   { value: 'transporte',       label: 'Transporte' },
   { value: 'controladoria',    label: 'Controladoria' },
   { value: 'logistica_reversa',label: 'Logística Reversa' },
   { value: 'comercial',        label: 'Comercial' },
+  { value: 'analista',         label: 'Analista' },
   { value: 'transportador',    label: 'Transportador' },
   { value: 'internal',         label: 'Interno (legado)' },
 ];
