@@ -41,6 +41,7 @@ const AuditLog          = lazy(() => import('./AuditLog'));
 const UsuariosAdmin     = lazy(() => import('./UsuariosAdmin'));
 const Transportadores   = lazy(() => import('./Transportadores'));
 const NfsDebito         = lazy(() => import('./NfsDebito'));
+const OobjNfes          = lazy(() => import('./OobjNfes'));
 
 // ── Lazy-loaded aceite verification ──────────
 const AceiteVerificacaoLazy = lazy(() =>
@@ -71,6 +72,7 @@ const PAGE_TITLES = {
   auditoria:        'Auditoria',
   usuarios:         'Usuários',
   verificacao:      'Verificar Aceites',
+  oobj_nfes:        'NF-e Recebidas (OOBJ)',
   tr_dash:          'Dashboard',
   tr_pendentes:     'Pendentes',
   tr_andamento:     'Em Andamento',
@@ -412,6 +414,7 @@ function Portal() {
     if (tab === 'auditoria') return <Suspense fallback={<LazyFallback />}><AuditLog audit={audit} /></Suspense>;
     if (tab === 'verificacao') return <Suspense fallback={<LazyFallback />}><AceiteVerificacaoLazy /></Suspense>;
     if (tab === 'usuarios') return <Suspense fallback={<LazyFallback />}><UsuariosAdmin /></Suspense>;
+    if (tab === 'oobj_nfes') return <Suspense fallback={<LazyFallback />}><OobjNfes user={user} /></Suspense>;
 
     if (tab === 'tr_dash' && isTransporter) return (
       <TransportDash myC={myC} myP={myP} statuses={statuses} transporterName={transporterName} extras={extras} onChangeTab={changeTab} />

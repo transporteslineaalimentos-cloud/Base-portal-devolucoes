@@ -29,6 +29,7 @@ const icons = {
   ocorrencia:    'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
   analista:      'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
   package:       'M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12',
+  oobj:          'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zm-2 9H8m4 4H8M13 2v5a1 1 0 001 1h4',
 };
 
 function buildNav(visibleTabs, counts = {}) {
@@ -41,6 +42,7 @@ function buildNav(visibleTabs, counts = {}) {
     { id: 'verificacao',     label: 'Verificar aceites',   icon: icons.auditoria,     group: 'cobr' },
     { id: 'lancamento',      label: 'Todas as notas',      icon: icons.lancamento,    group: 'devol', count: counts.lancamento },
     { id: 'acompanhamento',  label: 'Em acompanhamento',   icon: icons.aging,         group: 'devol', count: counts.acompanhamento },
+    { id: 'oobj_nfes',       label: 'NF-e OOBJ',           icon: icons.oobj,          group: 'devol' },
     { id: 'transportadores', label: 'Transportadores',     icon: icons.transportador },
     { id: 'auditoria',       label: 'Auditoria',           icon: icons.auditoria },
     { id: 'usuarios',        label: 'Usuários',            icon: icons.usuarios },
